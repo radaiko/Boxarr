@@ -11,7 +11,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
-// Config holds all runtime configuration, populated from SAB2TORBOX_* env vars.
+// Config holds all runtime configuration, populated from BOXARR_* env vars.
 type Config struct {
 	TorBoxAPIToken      string        `envconfig:"TORBOX_API_TOKEN" required:"true"`
 	SABAPIKey           string        `envconfig:"SAB_API_KEY" required:"true"`
@@ -45,7 +45,7 @@ type Config struct {
 // Load reads configuration from the environment and validates it.
 func Load() (*Config, error) {
 	var c Config
-	if err := envconfig.Process("sab2torbox", &c); err != nil {
+	if err := envconfig.Process("boxarr", &c); err != nil {
 		return nil, fmt.Errorf("processing env config: %w", err)
 	}
 	if err := c.validateMount(); err != nil {

@@ -8,10 +8,10 @@ import (
 
 func TestLoadDefaults(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SAB2TORBOX_TORBOX_API_TOKEN", "tok")
-	t.Setenv("SAB2TORBOX_SAB_API_KEY", "key")
-	t.Setenv("SAB2TORBOX_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("SAB2TORBOX_SYMLINK_ROOT", dir)
+	t.Setenv("BOXARR_TORBOX_API_TOKEN", "tok")
+	t.Setenv("BOXARR_SAB_API_KEY", "key")
+	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
+	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 
 	c, err := Load()
 	if err != nil {
@@ -42,22 +42,22 @@ func TestLoadDefaults(t *testing.T) {
 
 func TestLoadRequiresSymlinkRoot(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SAB2TORBOX_TORBOX_API_TOKEN", "t")
-	t.Setenv("SAB2TORBOX_SAB_API_KEY", "k")
-	t.Setenv("SAB2TORBOX_WEBDAV_MOUNT_ROOT", dir)
+	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
+	t.Setenv("BOXARR_SAB_API_KEY", "k")
+	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
 
 	// SYMLINK_ROOT is required.
-	os.Unsetenv("SAB2TORBOX_SYMLINK_ROOT")
+	os.Unsetenv("BOXARR_SYMLINK_ROOT")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when SYMLINK_ROOT is unset")
 	}
 	// Set but nonexistent — must fail validation.
-	t.Setenv("SAB2TORBOX_SYMLINK_ROOT", "/nonexistent/symlink/root/xyz")
+	t.Setenv("BOXARR_SYMLINK_ROOT", "/nonexistent/symlink/root/xyz")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for a missing symlink root directory")
 	}
 	// Valid.
-	t.Setenv("SAB2TORBOX_SYMLINK_ROOT", dir)
+	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 	if _, err := Load(); err != nil {
 		t.Fatalf("Load with a valid symlink root: %v", err)
 	}
@@ -120,10 +120,10 @@ func TestValidateMountMissing(t *testing.T) {
 
 func TestHealConfigDefaults(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SAB2TORBOX_TORBOX_API_TOKEN", "t")
-	t.Setenv("SAB2TORBOX_SAB_API_KEY", "k")
-	t.Setenv("SAB2TORBOX_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("SAB2TORBOX_SYMLINK_ROOT", dir)
+	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
+	t.Setenv("BOXARR_SAB_API_KEY", "k")
+	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
+	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 
 	c, err := Load()
 	if err != nil {
@@ -145,16 +145,16 @@ func TestHealConfigDefaults(t *testing.T) {
 
 func TestHealRequiresLibraryRootsWhenEnabled(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SAB2TORBOX_TORBOX_API_TOKEN", "t")
-	t.Setenv("SAB2TORBOX_SAB_API_KEY", "k")
-	t.Setenv("SAB2TORBOX_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("SAB2TORBOX_SYMLINK_ROOT", dir)
-	t.Setenv("SAB2TORBOX_HEAL_ENABLED", "true")
+	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
+	t.Setenv("BOXARR_SAB_API_KEY", "k")
+	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
+	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
+	t.Setenv("BOXARR_HEAL_ENABLED", "true")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error: HEAL_ENABLED without HEAL_LIBRARY_ROOTS")
 	}
-	t.Setenv("SAB2TORBOX_HEAL_LIBRARY_ROOTS", dir)
+	t.Setenv("BOXARR_HEAL_LIBRARY_ROOTS", dir)
 	if _, err := Load(); err != nil {
 		t.Fatalf("Load with valid heal config: %v", err)
 	}
@@ -162,13 +162,13 @@ func TestHealRequiresLibraryRootsWhenEnabled(t *testing.T) {
 
 func TestHealRejectsZeroMaxAttempts(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SAB2TORBOX_TORBOX_API_TOKEN", "t")
-	t.Setenv("SAB2TORBOX_SAB_API_KEY", "k")
-	t.Setenv("SAB2TORBOX_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("SAB2TORBOX_SYMLINK_ROOT", dir)
-	t.Setenv("SAB2TORBOX_HEAL_ENABLED", "true")
-	t.Setenv("SAB2TORBOX_HEAL_LIBRARY_ROOTS", dir)
-	t.Setenv("SAB2TORBOX_HEAL_MAX_ATTEMPTS", "0")
+	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
+	t.Setenv("BOXARR_SAB_API_KEY", "k")
+	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
+	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
+	t.Setenv("BOXARR_HEAL_ENABLED", "true")
+	t.Setenv("BOXARR_HEAL_LIBRARY_ROOTS", dir)
+	t.Setenv("BOXARR_HEAL_MAX_ATTEMPTS", "0")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error: HEAL_MAX_ATTEMPTS=0 means nothing ever heals")
 	}
@@ -176,10 +176,10 @@ func TestHealRejectsZeroMaxAttempts(t *testing.T) {
 
 func TestHealWebhookDefaults(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SAB2TORBOX_TORBOX_API_TOKEN", "t")
-	t.Setenv("SAB2TORBOX_SAB_API_KEY", "k")
-	t.Setenv("SAB2TORBOX_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("SAB2TORBOX_SYMLINK_ROOT", dir)
+	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
+	t.Setenv("BOXARR_SAB_API_KEY", "k")
+	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
+	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
