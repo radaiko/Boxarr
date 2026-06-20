@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/radaiko/boxarr/internal/api"
+	"github.com/radaiko/boxarr/internal/api/seerr"
 	apiv1 "github.com/radaiko/boxarr/internal/api/v1"
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
@@ -68,7 +69,10 @@ func run() error {
 	defer func() { _ = st.Close() }()
 
 	tb := torbox.New(cfg.TorBoxAPIToken)
-	cat := catalog.New(st, tmdb.New(cfg.TMDBAPIKey), cfg)
+	tmdbClient := tmdb.New(cfg.TMDBAPIKey)
+	prowlarrClient := prowlarr.New(cfg.ProwlarrURL, cfg.ProwlarrAPIKey)
+	cat := catalog.New(st, tmdbClient, cfg)
+	cat.SetSearcher(prowlarrClient)
 	workers := worker.New(st, tb, cfg, logger)
 	if cfg.PlexEnabled() {
 		workers.SetPlex(plex.New(cfg.PlexURL, cfg.PlexToken))
@@ -77,9 +81,14 @@ func run() error {
 	srv.SetHealth(api.NewHealth(st, tb, 5*time.Minute))
 	srv.SetHealReporter(workers)
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
-		Store: st, Cfg: cfg, TorBox: tb, Prowlarr: prowlarr.New(cfg.ProwlarrURL, cfg.ProwlarrAPIKey),
+		Store: st, Cfg: cfg, TorBox: tb, Prowlarr: prowlarrClient,
 		Catalog: cat, Health: workers, Logger: logger, Version: version,
 	}).Router())
+	seerrDeps := seerr.Deps{Store: st, Cfg: cfg, Catalog: cat, TMDB: tmdbClient, Logger: logger}
+	srv.SetSeerr(
+		seerr.NewRouter(seerr.KindSonarr, seerrDeps),
+		seerr.NewRouter(seerr.KindRadarr, seerrDeps),
+	)
 	srv.SetSPA(web.SPAHandler())
 
 	httpServer := &http.Server{

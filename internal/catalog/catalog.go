@@ -19,11 +19,12 @@ import (
 // ErrAlreadyExists is returned by AddMovie when the TMDB id is already cataloged.
 var ErrAlreadyExists = errors.New("already in catalog")
 
-// Service ingests TMDB titles into the store.
+// Service ingests TMDB titles into the store and (optionally) auto-searches.
 type Service struct {
-	store *store.Store
-	tmdb  *tmdb.Client
-	cfg   *config.Config
+	store  *store.Store
+	tmdb   *tmdb.Client
+	cfg    *config.Config
+	search Searcher // optional; nil = auto-search disabled
 }
 
 // New constructs a catalog Service.
