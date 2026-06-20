@@ -6,12 +6,24 @@ import (
 	"time"
 )
 
-func TestLoadDefaults(t *testing.T) {
+// baseEnv sets every required BOXARR_* var (all filesystem roots pointed at one
+// temp dir) so Load() succeeds; individual tests then tweak what they exercise.
+func baseEnv(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("BOXARR_TORBOX_API_TOKEN", "tok")
 	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
 	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
+	t.Setenv("BOXARR_MOVIE_LIBRARY_ROOT", dir)
+	t.Setenv("BOXARR_TV_LIBRARY_ROOT", dir)
+	t.Setenv("BOXARR_PROWLARR_URL", "http://prowlarr:9696")
+	t.Setenv("BOXARR_PROWLARR_API_KEY", "pk")
+	t.Setenv("BOXARR_TMDB_API_KEY", "tk")
+	return dir
+}
 
+func TestLoadDefaults(t *testing.T) {
+	dir := baseEnv(t)
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -39,37 +51,64 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadRequiresSymlinkRoot(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
+func TestLoadNewDefaults(t *testing.T) {
+	dir := baseEnv(t)
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.ReconcileInterval != 15*time.Minute {
+		t.Errorf("ReconcileInterval default: %v, want 15m", c.ReconcileInterval)
+	}
+	if c.MetadataInterval != 24*time.Hour {
+		t.Errorf("MetadataInterval default: %v, want 24h", c.MetadataInterval)
+	}
+	if c.SearchInterval != 6*time.Hour {
+		t.Errorf("SearchInterval default: %v, want 6h", c.SearchInterval)
+	}
+	if c.PlexScanTimeout != time.Minute {
+		t.Errorf("PlexScanTimeout default: %v, want 60s", c.PlexScanTimeout)
+	}
+	if c.TorrentPath() != dir { // empty subpath -> flat mount root
+		t.Errorf("TorrentPath default should be the mount root: %q", c.TorrentPath())
+	}
+	if !c.HealProwlarrFallback {
+		t.Error("HealProwlarrFallback should default to true")
+	}
+	if c.APIKey != "" {
+		t.Errorf("APIKey default should be empty, got %q", c.APIKey)
+	}
+	if c.SelectMinSeeders != 1 || c.SelectWeightResolution != 400 ||
+		c.SelectWeightProtocolCachedTorrent != 300 || c.SelectSeedSaturation != 100 {
+		t.Errorf("selection defaults wrong: minSeeders=%d wRes=%d wCached=%d sat=%d",
+			c.SelectMinSeeders, c.SelectWeightResolution, c.SelectWeightProtocolCachedTorrent, c.SelectSeedSaturation)
+	}
+	if len(c.SelectPreferredResolutions) != 3 || c.SelectPreferredResolutions[0] != "2160p" {
+		t.Errorf("SelectPreferredResolutions default: %v", c.SelectPreferredResolutions)
+	}
+	if c.MaxActiveDownloads != 0 || c.MaxCreatePerHour != 60 || c.MaxTorrentPerMin != 300 {
+		t.Errorf("limit defaults wrong: active=%d perHour=%d perMin=%d",
+			c.MaxActiveDownloads, c.MaxCreatePerHour, c.MaxTorrentPerMin)
+	}
+}
 
-	// SYMLINK_ROOT is required.
+func TestLoadRequiresSymlinkRoot(t *testing.T) {
+	baseEnv(t)
 	os.Unsetenv("BOXARR_SYMLINK_ROOT")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when SYMLINK_ROOT is unset")
 	}
-	// Set but nonexistent — must fail validation.
 	t.Setenv("BOXARR_SYMLINK_ROOT", "/nonexistent/symlink/root/xyz")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for a missing symlink root directory")
 	}
-	// Valid.
-	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
-	if _, err := Load(); err != nil {
-		t.Fatalf("Load with a valid symlink root: %v", err)
-	}
 }
 
-func TestWebDAVRefreshEnabled(t *testing.T) {
-	if !(&Config{TorBoxWebDAVUser: "u", TorBoxWebDAVPass: "p"}).WebDAVRefreshEnabled() {
-		t.Error("should be enabled when both credentials are set")
-	}
-	if (&Config{TorBoxWebDAVUser: "u"}).WebDAVRefreshEnabled() {
-		t.Error("should be disabled when password is missing")
-	}
-	if (&Config{TorBoxWebDAVPass: "p"}).WebDAVRefreshEnabled() {
-		t.Error("should be disabled when user is missing")
+func TestLoadRequiresLibraryRoots(t *testing.T) {
+	baseEnv(t)
+	t.Setenv("BOXARR_MOVIE_LIBRARY_ROOT", "/nonexistent/movies/xyz")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for a missing movie library root")
 	}
 }
 
@@ -77,6 +116,30 @@ func TestLoadMissingRequired(t *testing.T) {
 	os.Clearenv()
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for missing required vars")
+	}
+}
+
+func TestEnabledPredicates(t *testing.T) {
+	if !(&Config{TorBoxWebDAVUser: "u", TorBoxWebDAVPass: "p"}).WebDAVRefreshEnabled() {
+		t.Error("WebDAVRefreshEnabled: both creds set should be enabled")
+	}
+	if (&Config{TorBoxWebDAVUser: "u"}).WebDAVRefreshEnabled() {
+		t.Error("WebDAVRefreshEnabled: missing password should be disabled")
+	}
+	if !(&Config{PlexURL: "u", PlexToken: "t"}).PlexEnabled() {
+		t.Error("PlexEnabled: url+token should be enabled")
+	}
+	if (&Config{PlexURL: "u"}).PlexEnabled() {
+		t.Error("PlexEnabled: missing token should be disabled")
+	}
+	if !(&Config{TVDBAPIKey: "k"}).TVDBEnabled() {
+		t.Error("TVDBEnabled: key set should be enabled")
+	}
+	if !(&Config{SeerrAPIKeys: []string{"k"}}).SeerrEnabled() {
+		t.Error("SeerrEnabled: a key should be enabled")
+	}
+	if (&Config{}).SeerrEnabled() {
+		t.Error("SeerrEnabled: no keys should be disabled")
 	}
 }
 
@@ -117,11 +180,7 @@ func TestValidateMountMissing(t *testing.T) {
 }
 
 func TestHealConfigDefaults(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
-
+	baseEnv(t)
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -141,12 +200,8 @@ func TestHealConfigDefaults(t *testing.T) {
 }
 
 func TestHealRequiresLibraryRootsWhenEnabled(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
+	dir := baseEnv(t)
 	t.Setenv("BOXARR_HEAL_ENABLED", "true")
-
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error: HEAL_ENABLED without HEAL_LIBRARY_ROOTS")
 	}
@@ -157,10 +212,7 @@ func TestHealRequiresLibraryRootsWhenEnabled(t *testing.T) {
 }
 
 func TestHealRejectsZeroMaxAttempts(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
+	dir := baseEnv(t)
 	t.Setenv("BOXARR_HEAL_ENABLED", "true")
 	t.Setenv("BOXARR_HEAL_LIBRARY_ROOTS", dir)
 	t.Setenv("BOXARR_HEAL_MAX_ATTEMPTS", "0")
@@ -170,10 +222,7 @@ func TestHealRejectsZeroMaxAttempts(t *testing.T) {
 }
 
 func TestHealWebhookDefaults(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
-	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
+	baseEnv(t)
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
