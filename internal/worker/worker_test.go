@@ -30,6 +30,11 @@ type fakeTorBox struct {
 	list        []torbox.UsenetDownload
 	controls    []string
 	controlErr  error
+
+	// torrent side
+	createdTorrents []torbox.TorrentCreateRequest
+	torrentList     []torbox.TorrentDownload
+	torrentControls []string
 }
 
 func (f *fakeTorBox) CreateUsenetDownload(_ context.Context, r torbox.CreateRequest) (*torbox.CreateResult, error) {
@@ -54,6 +59,31 @@ func (f *fakeTorBox) ControlUsenet(_ context.Context, id int64, op string) error
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.controls = append(f.controls, op)
+	return f.controlErr
+}
+
+func (f *fakeTorBox) CreateTorrent(_ context.Context, r torbox.TorrentCreateRequest) (*torbox.TorrentCreateResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.createCalls++
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	f.createdTorrents = append(f.createdTorrents, r)
+	f.nextID++
+	return &torbox.TorrentCreateResult{TorrentID: torbox.FlexInt(f.nextID), Hash: "th"}, nil
+}
+
+func (f *fakeTorBox) ListTorrents(context.Context) ([]torbox.TorrentDownload, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.torrentList, nil
+}
+
+func (f *fakeTorBox) ControlTorrent(_ context.Context, _ int64, op string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.torrentControls = append(f.torrentControls, op)
 	return f.controlErr
 }
 

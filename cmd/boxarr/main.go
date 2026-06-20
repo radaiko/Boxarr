@@ -20,6 +20,7 @@ import (
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/metadata/tmdb"
+	"github.com/radaiko/boxarr/internal/plex"
 	"github.com/radaiko/boxarr/internal/prowlarr"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
@@ -69,6 +70,9 @@ func run() error {
 	tb := torbox.New(cfg.TorBoxAPIToken)
 	cat := catalog.New(st, tmdb.New(cfg.TMDBAPIKey), cfg)
 	workers := worker.New(st, tb, cfg, logger)
+	if cfg.PlexEnabled() {
+		workers.SetPlex(plex.New(cfg.PlexURL, cfg.PlexToken))
+	}
 	srv := api.NewServer(st, cfg, logger)
 	srv.SetHealth(api.NewHealth(st, tb, 5*time.Minute))
 	srv.SetHealReporter(workers)

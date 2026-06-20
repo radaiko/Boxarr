@@ -2,9 +2,21 @@ package worker
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 
 	"github.com/radaiko/boxarr/internal/job"
 )
+
+// removeLibrarySymlink unlinks a direct-to-library symlink and removes its now-
+// empty parent (Title (Year) / Season NN) dir, best-effort.
+func removeLibrarySymlink(linkPath string) error {
+	if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	_ = os.Remove(filepath.Dir(linkPath)) // only succeeds if empty
+	return nil
+}
 
 // deleteGiveUpAttempts bounds how many times the deleter retries a failing
 // TorBox deletion before dropping the job row anyway. At the default 1m poll
@@ -46,7 +58,13 @@ func (w *Workers) deleteJob(ctx context.Context, j *job.Job) {
 	log := w.logger.With("job_id", j.ID, "torbox_id", j.TorBoxID)
 
 	if j.TorBoxID != 0 {
-		if err := w.tb.ControlUsenet(ctx, j.TorBoxID, "delete"); err != nil {
+		var derr error
+		if j.Protocol == "torrent" {
+			derr = w.tb.ControlTorrent(ctx, j.TorBoxID, "delete")
+		} else {
+			derr = w.tb.ControlUsenet(ctx, j.TorBoxID, "delete")
+		}
+		if err := derr; err != nil {
 			w.deleteAttempts[j.ID]++
 			if w.deleteAttempts[j.ID] < deleteGiveUpAttempts {
 				log.Warn("torbox delete failed; will retry next cycle",
@@ -60,10 +78,21 @@ func (w *Workers) deleteJob(ctx context.Context, j *job.Job) {
 		}
 	}
 	delete(w.deleteAttempts, j.ID)
-	// Remove the per-release symlink directory.
+	// Remove direct-to-library symlinks recorded for this job (00 §5.1 importer).
+	if syms, err := w.store.ListImportedSymlinks(ctx); err == nil {
+		for _, s := range syms {
+			if s.JobID != j.ID {
+				continue
+			}
+			if rerr := removeLibrarySymlink(s.SymlinkPath); rerr != nil {
+				log.Warn("removing library symlink", "path", s.SymlinkPath, "error", rerr)
+			}
+		}
+	}
+	// Remove the per-release symlink-farm directory (legacy farm path).
 	if j.StoragePath != "" {
 		if err := removeSymlinkDir(w.cfg.SymlinkRoot, j.StoragePath); err != nil {
-			log.Warn("removing symlink directory", "dir", j.StoragePath, "error", err)
+			log.Debug("removing symlink-farm directory", "dir", j.StoragePath, "error", err)
 		}
 	}
 	if err := w.store.DeleteJob(ctx, j.ID); err != nil {

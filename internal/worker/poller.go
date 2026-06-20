@@ -145,6 +145,18 @@ func (w *Workers) reconcile(ctx context.Context, j *job.Job, rec torbox.UsenetDo
 			}
 			return reconcileAwaitingWebDAV
 		}
+		// Boxarr catalog jobs import directly to the library (00 §5.1). Legacy
+		// jobs without a media link fall back to the symlink farm.
+		if j.MediaType != "" {
+			if ierr := w.importMedia(ctx, j, sourceDir); ierr != nil {
+				log.Debug("import not ready yet, will retry", "error", ierr)
+				if uerr := w.store.UpdateJob(ctx, j); uerr != nil {
+					log.Error("persisting progress", "error", uerr)
+				}
+				return reconcileAwaitingWebDAV
+			}
+			return reconcileSettled
+		}
 		storagePath, files, ferr := buildSymlinkFarm(w.cfg.SymlinkRoot, j.Category, rec.Name, sourceDir)
 		if ferr != nil {
 			log.Error("building symlink farm", "error", ferr)
@@ -203,7 +215,13 @@ var (
 // path, named exactly as the download (rec.Name). It polls the filesystem
 // because the WebDAV listing can lag TorBox's completion flag.
 func (w *Workers) resolveStoragePath(ctx context.Context, name string) (string, error) {
-	expected := filepath.Join(w.cfg.UsenetPath(), name)
+	return w.resolveStoragePathIn(ctx, w.cfg.UsenetPath(), name)
+}
+
+// resolveStoragePathIn is resolveStoragePath against an explicit mount base
+// (UsenetPath for usenet, TorrentPath for torrents).
+func (w *Workers) resolveStoragePathIn(ctx context.Context, base, name string) (string, error) {
+	expected := filepath.Join(base, name)
 	deadline := time.Now().Add(pathRetryTimeout)
 	for {
 		if info, err := os.Stat(expected); err == nil && info.IsDir() {

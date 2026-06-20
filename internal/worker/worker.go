@@ -19,7 +19,15 @@ type TorBoxAPI interface {
 	CreateUsenetDownload(ctx context.Context, req torbox.CreateRequest) (*torbox.CreateResult, error)
 	ListUsenet(ctx context.Context) ([]torbox.UsenetDownload, error)
 	ControlUsenet(ctx context.Context, id int64, op string) error
+	CreateTorrent(ctx context.Context, req torbox.TorrentCreateRequest) (*torbox.TorrentCreateResult, error)
+	ListTorrents(ctx context.Context) ([]torbox.TorrentDownload, error)
+	ControlTorrent(ctx context.Context, id int64, op string) error
 	Ping(ctx context.Context) error
+}
+
+// PlexScanner triggers a Plex library scan after import. *plex.Client satisfies it.
+type PlexScanner interface {
+	ScanPath(ctx context.Context, sectionID, path string) error
 }
 
 // Workers owns the Submitter, Poller, and Reaper background loops.
@@ -42,6 +50,14 @@ type Workers struct {
 	// with a 429. Touched only by the single submitter goroutine, no lock.
 	submitBackoffUntil time.Time
 
+	// torrent-loop state, mirroring the usenet maps/timers so a usenet 429 can
+	// never pause torrents and vice-versa. Each touched by one goroutine only.
+	torrentMissingPolls       map[int64]int
+	torrentSubmitBackoffUntil time.Time
+
+	// plex, when set, receives a partial-scan call after each import (optional).
+	plex PlexScanner
+
 	// WebDAV /refresh state, also poller-goroutine-only.
 	httpClient         *http.Client
 	lastWebDAVRefresh  time.Time
@@ -55,15 +71,19 @@ type Workers struct {
 // New constructs a Workers.
 func New(st *store.Store, tb TorBoxAPI, cfg *config.Config, logger *slog.Logger) *Workers {
 	return &Workers{
-		store:          st,
-		tb:             tb,
-		cfg:            cfg,
-		logger:         logger,
-		missingPolls:   map[int64]int{},
-		deleteAttempts: map[int64]int{},
-		httpClient:     &http.Client{Timeout: 30 * time.Second},
+		store:               st,
+		tb:                  tb,
+		cfg:                 cfg,
+		logger:              logger,
+		missingPolls:        map[int64]int{},
+		torrentMissingPolls: map[int64]int{},
+		deleteAttempts:      map[int64]int{},
+		httpClient:          &http.Client{Timeout: 30 * time.Second},
 	}
 }
+
+// SetPlex attaches an optional Plex scanner invoked after each import.
+func (w *Workers) SetPlex(p PlexScanner) { w.plex = p }
 
 // loopSpec is one background loop: a name, a tick interval, and the function
 // run each tick.
@@ -78,6 +98,8 @@ func (w *Workers) Run(ctx context.Context) {
 	loops := []loopSpec{
 		{"submitter", w.cfg.PollInterval, w.submitOnce},
 		{"poller", w.cfg.PollInterval, w.pollOnce},
+		{"torrent-submitter", w.cfg.PollInterval, w.submitTorrentsOnce},
+		{"torrent-poller", w.cfg.PollInterval, w.pollTorrentsOnce},
 		{"deleter", w.cfg.PollInterval, w.deleteOnce},
 		{"reaper", 5 * time.Minute, w.reapOnce},
 	}
