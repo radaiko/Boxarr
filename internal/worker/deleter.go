@@ -3,7 +3,7 @@ package worker
 import (
 	"context"
 
-	"github.com/radaiko/sab2torbox/internal/job"
+	"github.com/radaiko/boxarr/internal/job"
 )
 
 // deleteGiveUpAttempts bounds how many times the deleter retries a failing

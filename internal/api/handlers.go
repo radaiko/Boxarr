@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/radaiko/sab2torbox/internal/config"
-	"github.com/radaiko/sab2torbox/internal/job"
-	"github.com/radaiko/sab2torbox/internal/store"
+	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/store"
 )
 
 // maxNZBSize caps an uploaded NZB at 32 MiB.

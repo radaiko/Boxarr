@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/job"
+	"github.com/radaiko/boxarr/internal/job"
 )
 
 // newTestStore opens a fresh migrated store in a temp directory.

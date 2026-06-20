@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/store"
+	"github.com/radaiko/boxarr/internal/store"
 )
 
 // Pinger validates TorBox reachability. The TorBox client satisfies it.

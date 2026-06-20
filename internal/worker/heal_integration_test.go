@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/config"
-	"github.com/radaiko/sab2torbox/internal/job"
-	"github.com/radaiko/sab2torbox/internal/store"
-	"github.com/radaiko/sab2torbox/internal/torbox"
+	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/store"
+	"github.com/radaiko/boxarr/internal/torbox"
 )
 
 // TestEndToEndRotationHeal simulates: a release is imported, TorBox rotates it

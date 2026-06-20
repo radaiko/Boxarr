@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/radaiko/sab2torbox/internal/job"
+	"github.com/radaiko/boxarr/internal/job"
 )
 
 // VersionResponse answers mode=version.

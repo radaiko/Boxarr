@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/job"
-	"github.com/radaiko/sab2torbox/internal/torbox"
+	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/torbox"
 )
 
 // activeStates are the job states the poller tracks against TorBox.

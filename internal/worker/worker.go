@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/config"
-	"github.com/radaiko/sab2torbox/internal/store"
-	"github.com/radaiko/sab2torbox/internal/torbox"
+	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/store"
+	"github.com/radaiko/boxarr/internal/torbox"
 )
 
 // TorBoxAPI is the subset of the TorBox client the workers depend on.

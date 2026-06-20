@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
-	"github.com/radaiko/sab2torbox/internal/job"
+	"github.com/radaiko/boxarr/internal/job"
 	_ "modernc.org/sqlite"
 )
 

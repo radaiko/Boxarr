@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/radaiko/sab2torbox/internal/job"
-	"github.com/radaiko/sab2torbox/internal/torbox"
+	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/torbox"
 )
 
 // defaultRateLimitCooldown is how long the submitter pauses after a TorBox

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/job"
+	"github.com/radaiko/boxarr/internal/job"
 )
 
 // importedTTL is how long an imported job is kept before the reaper drops it.

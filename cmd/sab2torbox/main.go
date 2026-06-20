@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/api"
-	"github.com/radaiko/sab2torbox/internal/config"
-	"github.com/radaiko/sab2torbox/internal/store"
-	"github.com/radaiko/sab2torbox/internal/torbox"
-	"github.com/radaiko/sab2torbox/internal/worker"
+	"github.com/radaiko/boxarr/internal/api"
+	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/store"
+	"github.com/radaiko/boxarr/internal/torbox"
+	"github.com/radaiko/boxarr/internal/worker"
 )
 
 // version is the build identifier shown in the startup log. It is "dev" for

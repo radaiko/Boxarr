@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/job"
+	"github.com/radaiko/boxarr/internal/job"
 )
 
 // webhookJob is the job summary embedded in a heal webhook payload.

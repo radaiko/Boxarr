@@ -1,17 +1,17 @@
-module github.com/radaiko/sab2torbox
+module github.com/radaiko/boxarr
 
 go 1.25.7
 
 require (
+	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/pressly/goose/v3 v3.27.1
 	modernc.org/sqlite v1.50.1
 )
 
 require (
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/go-chi/chi/v5 v5.2.5 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect

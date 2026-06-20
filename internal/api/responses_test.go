@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/radaiko/sab2torbox/internal/job"
+	"github.com/radaiko/boxarr/internal/job"
 )
 
 func TestQueueSlotFromJob(t *testing.T) {
