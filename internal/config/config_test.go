@@ -9,7 +9,6 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BOXARR_TORBOX_API_TOKEN", "tok")
-	t.Setenv("BOXARR_SAB_API_KEY", "key")
 	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
 	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 
@@ -43,7 +42,6 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadRequiresSymlinkRoot(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_SAB_API_KEY", "k")
 	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
 
 	// SYMLINK_ROOT is required.
@@ -121,7 +119,6 @@ func TestValidateMountMissing(t *testing.T) {
 func TestHealConfigDefaults(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_SAB_API_KEY", "k")
 	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
 	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 
@@ -146,7 +143,6 @@ func TestHealConfigDefaults(t *testing.T) {
 func TestHealRequiresLibraryRootsWhenEnabled(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_SAB_API_KEY", "k")
 	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
 	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 	t.Setenv("BOXARR_HEAL_ENABLED", "true")
@@ -163,7 +159,6 @@ func TestHealRequiresLibraryRootsWhenEnabled(t *testing.T) {
 func TestHealRejectsZeroMaxAttempts(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_SAB_API_KEY", "k")
 	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
 	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 	t.Setenv("BOXARR_HEAL_ENABLED", "true")
@@ -177,7 +172,6 @@ func TestHealRejectsZeroMaxAttempts(t *testing.T) {
 func TestHealWebhookDefaults(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BOXARR_TORBOX_API_TOKEN", "t")
-	t.Setenv("BOXARR_SAB_API_KEY", "k")
 	t.Setenv("BOXARR_WEBDAV_MOUNT_ROOT", dir)
 	t.Setenv("BOXARR_SYMLINK_ROOT", dir)
 	c, err := Load()

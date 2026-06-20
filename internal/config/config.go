@@ -14,7 +14,6 @@ import (
 // Config holds all runtime configuration, populated from BOXARR_* env vars.
 type Config struct {
 	TorBoxAPIToken      string        `envconfig:"TORBOX_API_TOKEN" required:"true"`
-	SABAPIKey           string        `envconfig:"SAB_API_KEY" required:"true"`
 	WebDAVMountRoot     string        `envconfig:"WEBDAV_MOUNT_ROOT" required:"true"`
 	WebDAVUsenetSubpath string        `envconfig:"WEBDAV_USENET_SUBPATH"`
 	SymlinkRoot         string        `envconfig:"SYMLINK_ROOT" required:"true"`
