@@ -1,5 +1,7 @@
-// Command sab2torbox bridges Sonarr/Radarr's SABnzbd download client to the
-// TorBox Usenet API, exposing completed files via a TorBox WebDAV mount.
+// Command boxarr is a TorBox-backed media manager for TV and movies: it
+// orchestrates Prowlarr search, TorBox usenet+torrent downloads, and a
+// Plex-readable library over a TorBox WebDAV mount. It evolves the proven
+// sab2torbox pipeline. (Phase 0: chassis; grab/import land in later phases.)
 package main
 
 import (
@@ -87,7 +89,7 @@ func run() error {
 		}
 	}()
 
-	logger.Info("sab2torbox started",
+	logger.Info("boxarr started",
 		"version", version,
 		"listen_addr", cfg.ListenAddr, "usenet_path", cfg.UsenetPath(),
 		"poll_interval", cfg.PollInterval.String())
@@ -98,7 +100,7 @@ func run() error {
 		return fmt.Errorf("http server: %w", err)
 	}
 	wg.Wait()
-	logger.Info("sab2torbox stopped")
+	logger.Info("boxarr stopped")
 	return nil
 }
 
@@ -106,7 +108,7 @@ func run() error {
 // service's own /healthz so the distroless container HEALTHCHECK works
 // without a shell. It returns a process exit code.
 func runHealthcheck() int {
-	addr := os.Getenv("SAB2TORBOX_LISTEN_ADDR")
+	addr := os.Getenv("BOXARR_LISTEN_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}

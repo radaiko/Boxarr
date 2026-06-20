@@ -19,7 +19,7 @@ type Config struct {
 	WebDAVUsenetSubpath string        `envconfig:"WEBDAV_USENET_SUBPATH"`
 	SymlinkRoot         string        `envconfig:"SYMLINK_ROOT" required:"true"`
 	ListenAddr          string        `envconfig:"LISTEN_ADDR" default:":8080"`
-	DatabasePath        string        `envconfig:"DATABASE_PATH" default:"/config/sab2torbox.db"`
+	DatabasePath        string        `envconfig:"DATABASE_PATH" default:"/config/boxarr.db"`
 	PollInterval        time.Duration `envconfig:"POLL_INTERVAL" default:"1m"`
 	LogLevel            string        `envconfig:"LOG_LEVEL" default:"info"`
 	Categories          []string      `envconfig:"CATEGORIES" default:"sonarr,radarr,sonarr-anime"`
