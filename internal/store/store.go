@@ -1,4 +1,4 @@
-// Package store provides SQLite-backed persistence for sab2torbox jobs.
+// Package store provides SQLite-backed persistence for boxarr.
 package store
 
 import (
@@ -74,27 +74,32 @@ const jobColumns = `id, state, category, nzb_name, nzb_content, nzb_url,
 	nzb_sha256, torbox_id, torbox_hash, storage_path, total_bytes,
 	downloaded_bytes, progress_pct, fail_message, created_at, updated_at,
 	submitted_at, completed_at, eta_seconds, heal_count, last_healed_at,
-	last_heal_error`
+	last_heal_error, protocol, media_type, media_ref, torrent_magnet,
+	torrent_hash, torrent_file`
 
 // scanJob reads one job row in jobColumns order.
 func scanJob(row interface{ Scan(...any) error }) (*job.Job, error) {
 	var j job.Job
 	var (
 		nzbURL, nzbSHA, hash, storage, failMsg, healError sql.NullString
-		torboxID                                          sql.NullInt64
+		mediaType, torrentMagnet, torrentHash             sql.NullString
+		torboxID, mediaRef                                sql.NullInt64
 		submitted, completed, healedAt                    sql.NullTime
 	)
 	err := row.Scan(&j.ID, &j.State, &j.Category, &j.NZBName, &j.NZBContent,
 		&nzbURL, &nzbSHA, &torboxID, &hash, &storage, &j.TotalBytes,
 		&j.DownloadedBytes, &j.ProgressPct, &failMsg, &j.CreatedAt,
 		&j.UpdatedAt, &submitted, &completed, &j.ETASeconds, &j.HealCount,
-		&healedAt, &healError)
+		&healedAt, &healError, &j.Protocol, &mediaType, &mediaRef,
+		&torrentMagnet, &torrentHash, &j.TorrentFile)
 	if err != nil {
 		return nil, err
 	}
 	j.NZBURL, j.NZBSHA256, j.TorBoxHash = nzbURL.String, nzbSHA.String, hash.String
 	j.StoragePath, j.FailMessage, j.TorBoxID = storage.String, failMsg.String, torboxID.Int64
 	j.LastHealError = healError.String
+	j.MediaType, j.MediaRef = mediaType.String, mediaRef.Int64
+	j.TorrentMagnet, j.TorrentHash = torrentMagnet.String, torrentHash.String
 	if submitted.Valid {
 		j.SubmittedAt = &submitted.Time
 	}
@@ -110,9 +115,12 @@ func scanJob(row interface{ Scan(...any) error }) (*job.Job, error) {
 // CreateJob inserts j and returns its new ID.
 func (s *Store) CreateJob(ctx context.Context, j *job.Job) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (state, category, nzb_name, nzb_content, nzb_url, nzb_sha256)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		j.State, j.Category, j.NZBName, j.NZBContent, nullStr(j.NZBURL), nullStr(j.NZBSHA256))
+		`INSERT INTO jobs (state, category, nzb_name, nzb_content, nzb_url, nzb_sha256,
+		 protocol, media_type, media_ref, torrent_magnet, torrent_hash, torrent_file)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		j.State, j.Category, j.NZBName, j.NZBContent, nullStr(j.NZBURL), nullStr(j.NZBSHA256),
+		protoOrDefault(j.Protocol), nullStr(j.MediaType), nullInt(j.MediaRef),
+		nullStr(j.TorrentMagnet), nullStr(j.TorrentHash), j.TorrentFile)
 	if err != nil {
 		return 0, fmt.Errorf("inserting job: %w", err)
 	}
@@ -136,14 +144,18 @@ func (s *Store) UpdateJob(ctx context.Context, j *job.Job) error {
 		 nzb_url=?, nzb_sha256=?, torbox_id=?, torbox_hash=?, storage_path=?,
 		 total_bytes=?, downloaded_bytes=?, progress_pct=?, fail_message=?,
 		 updated_at=CURRENT_TIMESTAMP, submitted_at=?, completed_at=?,
-		 eta_seconds=?, heal_count=?, last_healed_at=?, last_heal_error=?
+		 eta_seconds=?, heal_count=?, last_healed_at=?, last_heal_error=?,
+		 protocol=?, media_type=?, media_ref=?, torrent_magnet=?,
+		 torrent_hash=?, torrent_file=?
 		 WHERE id=?`,
 		j.State, j.Category, j.NZBName, j.NZBContent, nullStr(j.NZBURL),
 		nullStr(j.NZBSHA256), nullInt(j.TorBoxID), nullStr(j.TorBoxHash),
 		nullStr(j.StoragePath), j.TotalBytes, j.DownloadedBytes, j.ProgressPct,
 		nullStr(j.FailMessage), nullTime(j.SubmittedAt), nullTime(j.CompletedAt),
 		j.ETASeconds, j.HealCount, nullTime(j.LastHealedAt),
-		nullStr(j.LastHealError), j.ID)
+		nullStr(j.LastHealError), protoOrDefault(j.Protocol), nullStr(j.MediaType),
+		nullInt(j.MediaRef), nullStr(j.TorrentMagnet), nullStr(j.TorrentHash),
+		j.TorrentFile, j.ID)
 	if err != nil {
 		return fmt.Errorf("updating job %d: %w", j.ID, err)
 	}
@@ -199,6 +211,18 @@ func (s *Store) FindBySHA256(ctx context.Context, sha, category string) (*job.Jo
 // or nil if none exists.
 func (s *Store) FindByURL(ctx context.Context, url, category string) (*job.Job, error) {
 	return s.findOne(ctx, `nzb_url=? AND category=?`, url, category)
+}
+
+// FindByTorrentHash returns the most recent job with the given torrent info-hash
+// and category, or nil if none exists. Mirrors FindBySHA256 (app-level dedup).
+func (s *Store) FindByTorrentHash(ctx context.Context, hash, category string) (*job.Job, error) {
+	return s.findOne(ctx, `torrent_hash=? AND category=?`, hash, category)
+}
+
+// FindJobByMedia returns the most recent job linked to the given catalog item
+// via the polymorphic (media_type, media_ref) pointer, or nil if none exists.
+func (s *Store) FindJobByMedia(ctx context.Context, mediaType string, mediaRef int64) (*job.Job, error) {
+	return s.findOne(ctx, `media_type=? AND media_ref=?`, mediaType, mediaRef)
 }
 
 func (s *Store) findOne(ctx context.Context, where string, args ...any) (*job.Job, error) {
@@ -371,6 +395,14 @@ func nullStr(s string) any {
 		return nil
 	}
 	return s
+}
+
+// protoOrDefault returns "usenet" for an unset protocol, matching the column default.
+func protoOrDefault(p string) string {
+	if p == "" {
+		return "usenet"
+	}
+	return p
 }
 
 func nullInt(n int64) any {

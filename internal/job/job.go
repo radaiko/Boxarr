@@ -77,6 +77,14 @@ type Job struct {
 	UpdatedAt       time.Time
 	SubmittedAt     *time.Time
 	CompletedAt     *time.Time
+
+	// Added in migration 004 (protocol + media linkage + torrent artifact).
+	Protocol      string // "usenet" | "torrent" (defaults to "usenet")
+	MediaType     string // "movie"|"episode"|"season"|"series"|"" (polymorphic ref, 00 §5.4)
+	MediaRef      int64  // movie.id | episode.id; 0 = unset
+	TorrentMagnet string // magnet URI (parallels NZBURL)
+	TorrentHash   string // info-hash hex (parallels NZBSHA256; index-only, app dedup)
+	TorrentFile   []byte // .torrent bytes (parallels NZBContent)
 }
 
 // NzoID returns the SABnzbd nzo_id Sonarr uses to reference this job.
