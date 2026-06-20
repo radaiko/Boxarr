@@ -20,6 +20,7 @@ import (
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
+	"github.com/radaiko/boxarr/internal/web"
 	"github.com/radaiko/boxarr/internal/worker"
 )
 
@@ -70,6 +71,7 @@ func run() error {
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
 		Store: st, Cfg: cfg, TorBox: tb, Health: workers, Logger: logger, Version: version,
 	}).Router())
+	srv.SetSPA(web.SPAHandler())
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,

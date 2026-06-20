@@ -34,6 +34,7 @@ type Server struct {
 	health       Checker
 	healReporter HealReporter
 	v1           http.Handler
+	spa          http.Handler
 }
 
 // NewServer constructs a Server.
@@ -50,13 +51,19 @@ func (s *Server) SetHealReporter(r HealReporter) { s.healReporter = r }
 // SetV1Router attaches the /api/v1 REST surface (internal/api/v1) to mount.
 func (s *Server) SetV1Router(h http.Handler) { s.v1 = h }
 
-// Router builds the chi router: /healthz, the embedded SPA-less API surface, and
-// (when attached) /api/v1. The Sonarr/Radarr v3 emulation + SPA mount in later phases.
+// SetSPA attaches the embedded React SPA handler, mounted last as the catch-all.
+func (s *Server) SetSPA(h http.Handler) { s.spa = h }
+
+// Router builds the chi router: /healthz, /api/v1 (when attached), and the
+// embedded SPA as the catch-all. The Sonarr/Radarr v3 emulation mounts in Phase 3.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Get("/healthz", s.handleHealthz)
 	if s.v1 != nil {
 		r.Mount("/api/v1", s.v1)
+	}
+	if s.spa != nil {
+		r.Handle("/*", s.spa) // last: API/health namespaces win first
 	}
 	return r
 }

@@ -1,6 +1,14 @@
+/boxarr
 /sab2torbox
 *.db
 *.db-wal
 *.db-shm
 .env
 /config/
+
+# Frontend
+/web/node_modules/
+/web/dist/
+# Built SPA assets are produced by the Docker/CI build; only the committed
+# placeholder internal/web/dist/index.html is tracked.
+/internal/web/dist/assets/

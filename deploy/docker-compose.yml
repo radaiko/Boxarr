@@ -1,27 +1,41 @@
 services:
-  sab2torbox:
-    image: ghcr.io/radaiko/sab2torbox:latest
-    container_name: sab2torbox
+  boxarr:
+    image: ghcr.io/radaiko/boxarr:latest
+    container_name: boxarr
     restart: unless-stopped
     environment:
-      - SAB2TORBOX_TORBOX_API_TOKEN=${TORBOX_API_TOKEN}
-      - SAB2TORBOX_SAB_API_KEY=${SAB_API_KEY}
-      - SAB2TORBOX_WEBDAV_MOUNT_ROOT=/mnt/torbox
+      # ── Core (required) ──
+      - BOXARR_TORBOX_API_TOKEN=${TORBOX_API_TOKEN}
+      - BOXARR_PROWLARR_URL=${PROWLARR_URL}
+      - BOXARR_PROWLARR_API_KEY=${PROWLARR_API_KEY}
+      - BOXARR_TMDB_API_KEY=${TMDB_API_KEY}
+      - BOXARR_WEBDAV_MOUNT_ROOT=/mnt/torbox
       # Leave empty: TorBox creates one folder per release directly under the
       # mount root. Set only if your WebDAV nests releases under a subdir.
-      - SAB2TORBOX_WEBDAV_USENET_SUBPATH=
-      # Required. Completed downloads are published as symlinks here; the
-      # library must share this filesystem (bind-mounted below, and into the
-      # Sonarr/Radarr/Plex containers too).
-      - SAB2TORBOX_SYMLINK_ROOT=/mnt/smedia/_incoming
-      - SAB2TORBOX_DATABASE_PATH=/config/sab2torbox.db
-      - SAB2TORBOX_POLL_INTERVAL=1m
-      - SAB2TORBOX_LOG_LEVEL=info
-      - SAB2TORBOX_CATEGORIES=sonarr,radarr,sonarr-anime
-      # Optional: auto-force TorBox's WebDAV refresh on completion. Set both
-      # credentials to enable; the password is your TorBox API token.
-      - SAB2TORBOX_TORBOX_WEBDAV_USER=${TORBOX_WEBDAV_USER:-}
-      - SAB2TORBOX_TORBOX_WEBDAV_PASS=${TORBOX_WEBDAV_PASS:-}
+      - BOXARR_WEBDAV_USENET_SUBPATH=
+      - BOXARR_WEBDAV_TORRENT_SUBPATH=
+      # Library roots (Plex-standard layout). Must share the WebDAV mount's
+      # filesystem and be mounted at the SAME absolute path in the Plex container.
+      - BOXARR_MOVIE_LIBRARY_ROOT=/data/movies
+      - BOXARR_TV_LIBRARY_ROOT=/data/tv
+      # SYMLINK_ROOT is transitional (the reused worker still references it; the
+      # importer drops it in Phase 1). Point it inside the shared filesystem.
+      - BOXARR_SYMLINK_ROOT=/data/_incoming
+      - BOXARR_DATABASE_PATH=/config/boxarr.db
+      - BOXARR_POLL_INTERVAL=1m
+      - BOXARR_RECONCILE_INTERVAL=15m
+      - BOXARR_METADATA_REFRESH_INTERVAL=24h
+      - BOXARR_LOG_LEVEL=info
+      # ── Optional integrations ──
+      - BOXARR_API_KEY=${BOXARR_API_KEY:-}
+      - BOXARR_TVDB_API_KEY=${TVDB_API_KEY:-}
+      - BOXARR_TVDB_PIN=${TVDB_PIN:-}
+      - BOXARR_PLEX_URL=${PLEX_URL:-}
+      - BOXARR_PLEX_TOKEN=${PLEX_TOKEN:-}
+      - BOXARR_SEERR_API_KEYS=${SEERR_API_KEYS:-}
+      # Optional: auto-force TorBox's WebDAV refresh on completion (both creds).
+      - BOXARR_TORBOX_WEBDAV_USER=${TORBOX_WEBDAV_USER:-}
+      - BOXARR_TORBOX_WEBDAV_PASS=${TORBOX_WEBDAV_PASS:-}
       - TZ=Europe/Vienna
     ports:
       - "8181:8080"
@@ -29,21 +43,22 @@ services:
       # /config must be writable by uid 65532 (the distroless nonroot user).
       - ./config:/config
       # The rclone WebDAV mount. rslave lets the container see the host mount
-      # without propagating its own mounts back to the host.
+      # without propagating its own mounts back to the host. Mount at the SAME
+      # absolute path in the Plex container (Assumption D).
       - type: bind
         source: /mnt/torbox
         target: /mnt/torbox
         bind:
           propagation: rslave
-      # The filesystem holding SYMLINK_ROOT and the media library. Mount it
-      # into the Sonarr/Radarr/Plex containers at the same path too.
+      # The filesystem holding the movie + TV library roots (same FS as the
+      # WebDAV mount). Mount into the Plex container at the same path too.
       - type: bind
-        source: /mnt/smedia
-        target: /mnt/smedia
+        source: /data
+        target: /data
         bind:
           propagation: rslave
     healthcheck:
-      test: ["CMD", "/sab2torbox", "healthcheck"]
+      test: ["CMD", "/boxarr", "healthcheck"]
       interval: 60s
       timeout: 5s
       retries: 3
