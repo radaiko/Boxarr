@@ -55,6 +55,9 @@ func (w *Workers) pollOnce(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if j.Protocol == "torrent" {
+			continue // torrent jobs are reconciled by the torrent poller (added in a later increment)
+		}
 		stillActive[j.TorBoxID] = true
 		rec, ok := byID[j.TorBoxID]
 		if !ok {
