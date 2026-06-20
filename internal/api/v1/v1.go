@@ -60,6 +60,7 @@ func (h *Handler) Router() http.Handler {
 	r.Put("/movies/{id}/monitored", h.setMovieMonitored)
 	r.Delete("/movies/{id}", h.deleteMovie)
 	r.Get("/movies/{id}/search", h.searchMovie)
+	r.Post("/movies/{id}/grab", h.grabMovie)
 	r.Get("/search", h.freeSearch)
 	r.Get("/storage", h.storage)
 	r.Get("/webdav", h.listWebDAV)
