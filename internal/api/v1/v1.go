@@ -64,6 +64,15 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/search", h.freeSearch)
 	r.Get("/storage", h.storage)
 	r.Get("/webdav", h.listWebDAV)
+	r.Get("/series", h.listSeries)
+	r.Get("/series/lookup", h.lookupSeries)
+	r.Get("/series/{id}", h.getSeries)
+	r.Post("/series", h.addSeries)
+	r.Put("/series/{id}/monitored", h.setSeriesMonitored)
+	r.Delete("/series/{id}", h.deleteSeries)
+	r.Get("/series/{id}/seasons/{season}/search", h.searchSeason)
+	r.Get("/series/{id}/episodes/{episodeId}/search", h.searchEpisode)
+	r.Post("/series/{id}/grab", h.grabSeries)
 	return r
 }
 

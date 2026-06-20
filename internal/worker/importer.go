@@ -26,6 +26,8 @@ func (w *Workers) importMedia(ctx context.Context, j *job.Job, sourceDir string)
 	switch j.MediaType {
 	case "movie":
 		return w.importMovie(ctx, j, sourceDir)
+	case "episode", "season", "series":
+		return w.importEpisodes(ctx, j, sourceDir)
 	default:
 		return fmt.Errorf("import: unsupported media_type %q (job %d)", j.MediaType, j.ID)
 	}

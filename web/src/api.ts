@@ -94,3 +94,44 @@ export function posterURL(path?: string): string {
   if (!posterBase) posterBase = 'https://image.tmdb.org/t/p/w342'
   return posterBase + path
 }
+
+export interface Series {
+  id: number
+  tmdbId: number
+  tvdbId?: number
+  title: string
+  year: number
+  monitored: boolean
+  status: string
+  posterPath?: string
+  overview?: string
+  seasons?: Season[]
+}
+
+export interface Season {
+  seasonNumber: number
+  monitored: boolean
+  status: string
+  episodes?: Episode[]
+}
+
+export interface Episode {
+  id: number
+  seasonNumber: number
+  episodeNumber: number
+  title: string
+  airDate?: string
+  status: string
+  monitored: boolean
+  hasFile: boolean
+}
+
+export interface SeriesCandidate {
+  tmdbId: number
+  tvdbId?: number
+  title: string
+  year: number
+  overview?: string
+  posterPath?: string
+  inLibrary: boolean
+}
