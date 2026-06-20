@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Settings } from './views/Settings'
 import { Movies } from './views/Movies'
+import { Series } from './views/Series'
 import { loadImageBase } from './api'
 
 const views = ['Movies', 'Series', 'WebDAV', 'Storage', 'Notifications', 'Settings'] as const
@@ -23,8 +24,11 @@ export function App() {
       </header>
       <main>
         {view === 'Movies' && <Movies />}
+        {view === 'Series' && <Series />}
         {view === 'Settings' && <Settings />}
-        {view !== 'Movies' && view !== 'Settings' && <p>{view} — arrives in a later phase.</p>}
+        {view !== 'Movies' && view !== 'Series' && view !== 'Settings' && (
+          <p>{view} — arrives in a later phase.</p>
+        )}
       </main>
     </div>
   )
