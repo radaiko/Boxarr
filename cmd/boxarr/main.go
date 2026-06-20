@@ -17,7 +17,9 @@ import (
 
 	"github.com/radaiko/boxarr/internal/api"
 	apiv1 "github.com/radaiko/boxarr/internal/api/v1"
+	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/metadata/tmdb"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
 	"github.com/radaiko/boxarr/internal/web"
@@ -64,12 +66,13 @@ func run() error {
 	defer func() { _ = st.Close() }()
 
 	tb := torbox.New(cfg.TorBoxAPIToken)
+	cat := catalog.New(st, tmdb.New(cfg.TMDBAPIKey), cfg)
 	workers := worker.New(st, tb, cfg, logger)
 	srv := api.NewServer(st, cfg, logger)
 	srv.SetHealth(api.NewHealth(st, tb, 5*time.Minute))
 	srv.SetHealReporter(workers)
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
-		Store: st, Cfg: cfg, TorBox: tb, Health: workers, Logger: logger, Version: version,
+		Store: st, Cfg: cfg, TorBox: tb, Catalog: cat, Health: workers, Logger: logger, Version: version,
 	}).Router())
 	srv.SetSPA(web.SPAHandler())
 

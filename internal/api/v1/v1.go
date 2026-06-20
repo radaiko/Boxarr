@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/store"
@@ -28,6 +29,7 @@ type Deps struct {
 	Store   *store.Store
 	Cfg     *config.Config
 	TorBox  *torbox.Client
+	Catalog *catalog.Service
 	Health  HealReporter
 	Logger  *slog.Logger
 	Version string
@@ -49,6 +51,12 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/account", h.account)
 	r.Get("/settings", h.getSettings)
 	r.Put("/settings", h.putSettings)
+	r.Get("/movies", h.listMovies)
+	r.Get("/movies/lookup", h.lookupMovies)
+	r.Get("/movies/{id}", h.getMovie)
+	r.Post("/movies", h.addMovie)
+	r.Put("/movies/{id}/monitored", h.setMovieMonitored)
+	r.Delete("/movies/{id}", h.deleteMovie)
 	return r
 }
 
