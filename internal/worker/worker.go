@@ -30,6 +30,13 @@ type PlexScanner interface {
 	ScanPath(ctx context.Context, sectionID, path string) error
 }
 
+// Automation drives the optional Phase-5 scheduled loops. *catalog.Service
+// satisfies it. Registered only when config enables automation.
+type Automation interface {
+	AutoSearchWanted(ctx context.Context) error
+	RefreshMetadata(ctx context.Context) error
+}
+
 // Workers owns the Submitter, Poller, and Reaper background loops.
 type Workers struct {
 	store  *store.Store
@@ -58,6 +65,9 @@ type Workers struct {
 	// plex, when set, receives a partial-scan call after each import (optional).
 	plex PlexScanner
 
+	// automation, when set, enables the Phase-5 scheduled loops (optional).
+	automation Automation
+
 	// WebDAV /refresh state, also poller-goroutine-only.
 	httpClient         *http.Client
 	lastWebDAVRefresh  time.Time
@@ -85,6 +95,9 @@ func New(st *store.Store, tb TorBoxAPI, cfg *config.Config, logger *slog.Logger)
 // SetPlex attaches an optional Plex scanner invoked after each import.
 func (w *Workers) SetPlex(p PlexScanner) { w.plex = p }
 
+// SetAutomation enables the Phase-5 scheduled auto-search + metadata-refresh loops.
+func (w *Workers) SetAutomation(a Automation) { w.automation = a }
+
 // loopSpec is one background loop: a name, a tick interval, and the function
 // run each tick.
 type loopSpec struct {
@@ -108,6 +121,12 @@ func (w *Workers) Run(ctx context.Context) {
 		loops = append(loops,
 			loopSpec{"healer", w.cfg.HealInterval, w.healOnce},
 			loopSpec{"heal-reconciler", w.cfg.PollInterval, w.healReconcileOnce},
+		)
+	}
+	if w.automation != nil {
+		loops = append(loops,
+			loopSpec{"metadata-refresh", w.cfg.MetadataInterval, w.metadataRefreshOnce},
+			loopSpec{"auto-search", w.cfg.SearchInterval, w.autoSearchOnce},
 		)
 	}
 	var wg sync.WaitGroup

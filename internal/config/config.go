@@ -76,6 +76,9 @@ type Config struct {
 	MetadataInterval  time.Duration `envconfig:"METADATA_REFRESH_INTERVAL" default:"24h"`
 	SearchInterval    time.Duration `envconfig:"SEARCH_INTERVAL" default:"6h"`
 
+	// ── Automation (NEW — Phase 5; default off, ships dark, FR-SR-4/FR-CAT-5) ──
+	AutomationEnabled bool `envconfig:"AUTOMATION_ENABLED" default:"false"`
+
 	// ── Selection score knobs (NEW — FR-SR-5; algorithm in 06 §3) ──
 	SelectAllowedResolutions   []string `envconfig:"SELECT_ALLOWED_RESOLUTIONS"`
 	SelectMinSize              int64    `envconfig:"SELECT_MIN_SIZE" default:"0"`

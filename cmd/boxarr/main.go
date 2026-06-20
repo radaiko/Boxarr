@@ -77,6 +77,11 @@ func run() error {
 	if cfg.PlexEnabled() {
 		workers.SetPlex(plex.New(cfg.PlexURL, cfg.PlexToken))
 	}
+	if cfg.AutomationEnabled {
+		workers.SetAutomation(cat)
+		logger.Info("automation enabled", "search_interval", cfg.SearchInterval.String(),
+			"metadata_interval", cfg.MetadataInterval.String())
+	}
 	srv := api.NewServer(st, cfg, logger)
 	srv.SetHealth(api.NewHealth(st, tb, 5*time.Minute))
 	srv.SetHealReporter(workers)
