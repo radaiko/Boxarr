@@ -1,4 +1,4 @@
-// Package job defines the sab2torbox domain record and its state machine.
+// Package job defines the boxarr domain record and its state machine.
 package job
 
 import "time"
@@ -12,6 +12,7 @@ const (
 	StateSubmitting       State = "submitting"        // submit to TorBox in progress
 	StateQueued           State = "queued"            // accepted by TorBox, not yet transferring
 	StateDownloading      State = "downloading"       // TorBox is transferring
+	StateSeeding          State = "seeding"           // torrent upload/ratio phase; files may already be present
 	StateCompleted        State = "completed"         // finished and present; storage path resolved
 	StateImported         State = "imported"          // Sonarr has read the history entry
 	StateDeleted          State = "deleted"           // removed from TorBox at Sonarr's request
@@ -26,7 +27,8 @@ var transitions = map[State][]State{
 	StatePending:          {StateSubmitting, StateFailed},
 	StateSubmitting:       {StateQueued, StatePending, StateFailed},
 	StateQueued:           {StateDownloading, StateCompleted, StateFailed},
-	StateDownloading:      {StateCompleted, StateFailed},
+	StateDownloading:      {StateSeeding, StateCompleted, StateFailed},
+	StateSeeding:          {StateCompleted, StateFailed},
 	StateCompleted:        {StateImported, StateDeleted, StateFailed},
 	StateImported:         {StateDeleted, StateFailed, StateHealing},
 	StateHealing:          {StateImported, StateHealFailed},
