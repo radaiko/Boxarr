@@ -15,6 +15,7 @@ import (
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/prowlarr"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
@@ -26,13 +27,14 @@ type HealReporter interface {
 
 // Deps are the dependencies the /api/v1 handler needs.
 type Deps struct {
-	Store   *store.Store
-	Cfg     *config.Config
-	TorBox  *torbox.Client
-	Catalog *catalog.Service
-	Health  HealReporter
-	Logger  *slog.Logger
-	Version string
+	Store    *store.Store
+	Cfg      *config.Config
+	TorBox   *torbox.Client
+	Prowlarr *prowlarr.Client
+	Catalog  *catalog.Service
+	Health   HealReporter
+	Logger   *slog.Logger
+	Version  string
 }
 
 // Handler serves the /api/v1 surface.
@@ -57,6 +59,8 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/movies", h.addMovie)
 	r.Put("/movies/{id}/monitored", h.setMovieMonitored)
 	r.Delete("/movies/{id}", h.deleteMovie)
+	r.Get("/movies/{id}/search", h.searchMovie)
+	r.Get("/search", h.freeSearch)
 	return r
 }
 

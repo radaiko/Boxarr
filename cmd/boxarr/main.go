@@ -20,6 +20,7 @@ import (
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/metadata/tmdb"
+	"github.com/radaiko/boxarr/internal/prowlarr"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
 	"github.com/radaiko/boxarr/internal/web"
@@ -72,7 +73,8 @@ func run() error {
 	srv.SetHealth(api.NewHealth(st, tb, 5*time.Minute))
 	srv.SetHealReporter(workers)
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
-		Store: st, Cfg: cfg, TorBox: tb, Catalog: cat, Health: workers, Logger: logger, Version: version,
+		Store: st, Cfg: cfg, TorBox: tb, Prowlarr: prowlarr.New(cfg.ProwlarrURL, cfg.ProwlarrAPIKey),
+		Catalog: cat, Health: workers, Logger: logger, Version: version,
 	}).Router())
 	srv.SetSPA(web.SPAHandler())
 
