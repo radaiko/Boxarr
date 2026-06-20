@@ -126,6 +126,7 @@ func (w *Workers) reconcile(ctx context.Context, j *job.Job, rec torbox.UsenetDo
 			log.Error("persisting failed state", "error", err)
 		}
 		log.Warn("job failed on torbox", "download_state", rec.DownloadState)
+		w.onGrabFailed(ctx, j)
 		return reconcileSettled
 	}
 

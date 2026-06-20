@@ -103,6 +103,7 @@ func (w *Workers) reconcileTorrent(ctx context.Context, j *job.Job, rec torbox.T
 			log.Error("persisting failed state", "error", err)
 		}
 		log.Warn("torrent failed on torbox", "download_state", rec.DownloadState)
+		w.onGrabFailed(ctx, j)
 		return reconcileSettled
 	}
 

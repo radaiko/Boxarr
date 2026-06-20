@@ -102,6 +102,7 @@ func (w *Workers) Run(ctx context.Context) {
 		{"torrent-poller", w.cfg.PollInterval, w.pollTorrentsOnce},
 		{"deleter", w.cfg.PollInterval, w.deleteOnce},
 		{"reaper", 5 * time.Minute, w.reapOnce},
+		{"reconciler", w.cfg.ReconcileInterval, w.reconcileOnce},
 	}
 	if w.cfg.HealEnabled {
 		loops = append(loops,
@@ -133,6 +134,9 @@ func (w *Workers) HealRunInfo() (last, next time.Time) {
 
 // loop runs fn immediately, then every interval, until ctx is cancelled.
 func (w *Workers) loop(ctx context.Context, name string, interval time.Duration, fn func(context.Context) error) {
+	if interval <= 0 {
+		interval = time.Minute // defensive: a misconfigured interval must not panic
+	}
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {

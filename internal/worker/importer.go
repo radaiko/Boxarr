@@ -79,6 +79,7 @@ func (w *Workers) importMovie(ctx context.Context, j *job.Job, sourceDir string)
 	}
 	log.Info("movie imported", "library_path", linkPath)
 
+	w.notifyEvent(ctx, "download_completed", j, map[string]any{"title": m.Title, "libraryPath": linkPath})
 	w.maybePlexScan(ctx, dir, "movie")
 	return nil
 }
