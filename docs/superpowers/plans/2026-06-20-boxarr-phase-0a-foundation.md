@@ -288,6 +288,8 @@ git commit -m "feat!: drop SABnzbd download-client emulation surface (00 Assumpt
 - Modify: `internal/config/config.go`
 - Test: `internal/config/config_test.go`
 
+> **Reconciliation (approved at the Group A checkpoint):** spec `08` lists `SYMLINK_ROOT`/`CATEGORIES` as dropped, but the reused `internal/worker` package and `cmd/boxarr/main.go` still reference `cfg.SymlinkRoot`/`cfg.Categories`. They are therefore **kept transitionally** (annotated in the struct) and removed in **Phase 1** when the importer moves to the direct-to-library model (`00 §5.1`). The new library-root validation requires `MOVIE_LIBRARY_ROOT` + `TV_LIBRARY_ROOT` to exist, so the test helper points all roots at one temp dir.
+
 - [ ] **Step 1: Write failing tests for the new surface**
 
 Add to `internal/config/config_test.go`:
