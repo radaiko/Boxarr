@@ -61,6 +61,8 @@ func (h *Handler) Router() http.Handler {
 	r.Delete("/movies/{id}", h.deleteMovie)
 	r.Get("/movies/{id}/search", h.searchMovie)
 	r.Get("/search", h.freeSearch)
+	r.Get("/storage", h.storage)
+	r.Get("/webdav", h.listWebDAV)
 	return r
 }
 
