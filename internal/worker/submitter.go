@@ -27,6 +27,9 @@ func (w *Workers) submitOnce(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if j.Protocol == "torrent" {
+			continue // torrent jobs are driven by the torrent submitter (added in a later increment)
+		}
 		if cooldown := w.submitJob(ctx, j); cooldown > 0 {
 			// TorBox is throttling: the job is back in `pending` and the
 			// rest of the queue would only earn more 429s. Pause and let a

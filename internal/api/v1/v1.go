@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/prowlarr"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
@@ -25,12 +27,14 @@ type HealReporter interface {
 
 // Deps are the dependencies the /api/v1 handler needs.
 type Deps struct {
-	Store   *store.Store
-	Cfg     *config.Config
-	TorBox  *torbox.Client
-	Health  HealReporter
-	Logger  *slog.Logger
-	Version string
+	Store    *store.Store
+	Cfg      *config.Config
+	TorBox   *torbox.Client
+	Prowlarr *prowlarr.Client
+	Catalog  *catalog.Service
+	Health   HealReporter
+	Logger   *slog.Logger
+	Version  string
 }
 
 // Handler serves the /api/v1 surface.
@@ -49,6 +53,17 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/account", h.account)
 	r.Get("/settings", h.getSettings)
 	r.Put("/settings", h.putSettings)
+	r.Get("/movies", h.listMovies)
+	r.Get("/movies/lookup", h.lookupMovies)
+	r.Get("/movies/{id}", h.getMovie)
+	r.Post("/movies", h.addMovie)
+	r.Put("/movies/{id}/monitored", h.setMovieMonitored)
+	r.Delete("/movies/{id}", h.deleteMovie)
+	r.Get("/movies/{id}/search", h.searchMovie)
+	r.Post("/movies/{id}/grab", h.grabMovie)
+	r.Get("/search", h.freeSearch)
+	r.Get("/storage", h.storage)
+	r.Get("/webdav", h.listWebDAV)
 	return r
 }
 

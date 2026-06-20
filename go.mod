@@ -1,11 +1,13 @@
 module github.com/radaiko/boxarr
 
-go 1.25.7
+go 1.26
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/chill-institute/torrentname v1.4.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/nssteinbrenner/anitogo v1.0.0
 	github.com/pressly/goose/v3 v3.27.1
 	modernc.org/sqlite v1.50.1
 )
@@ -21,6 +23,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Settings } from './views/Settings'
+import { Movies } from './views/Movies'
+import { loadImageBase } from './api'
 
 const views = ['Movies', 'Series', 'WebDAV', 'Storage', 'Notifications', 'Settings'] as const
 type View = (typeof views)[number]
 
 export function App() {
   const [view, setView] = useState<View>('Movies')
+  useEffect(() => { void loadImageBase() }, [])
   return (
     <div>
       <header>
@@ -19,7 +22,9 @@ export function App() {
         </nav>
       </header>
       <main>
-        {view === 'Settings' ? <Settings /> : <p>{view} — arrives in a later phase.</p>}
+        {view === 'Movies' && <Movies />}
+        {view === 'Settings' && <Settings />}
+        {view !== 'Movies' && view !== 'Settings' && <p>{view} — arrives in a later phase.</p>}
       </main>
     </div>
   )
