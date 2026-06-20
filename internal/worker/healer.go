@@ -25,19 +25,47 @@ func (w *Workers) healReconcileOnce(ctx context.Context) error {
 	if len(jobs) == 0 {
 		return nil
 	}
-	list, err := w.tb.ListUsenet(ctx)
+	// Reconcile usenet healing jobs against the usenet list.
+	usenetList, err := w.tb.ListUsenet(ctx)
 	if err != nil {
 		return fmt.Errorf("heal: listing torbox usenet: %w", err)
 	}
-	byID := make(map[int64]torbox.UsenetDownload, len(list))
-	for _, d := range list {
-		byID[int64(d.ID)] = d
+	usenetByID := make(map[int64]torbox.UsenetDownload, len(usenetList))
+	for _, d := range usenetList {
+		usenetByID[int64(d.ID)] = d
 	}
+	// And torrent healing jobs against the torrent list (lazily fetched).
+	var torrentByID map[int64]torbox.TorrentDownload
 	for _, j := range jobs {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		rec, ok := byID[j.TorBoxID]
+		if j.Protocol == "torrent" {
+			if torrentByID == nil {
+				tl, terr := w.tb.ListTorrents(ctx)
+				if terr != nil {
+					return fmt.Errorf("heal: listing torbox torrents: %w", terr)
+				}
+				torrentByID = make(map[int64]torbox.TorrentDownload, len(tl))
+				for _, d := range tl {
+					torrentByID[int64(d.ID)] = d
+				}
+			}
+			rec, ok := torrentByID[j.TorBoxID]
+			if !ok {
+				continue
+			}
+			if rec.Failed() {
+				w.markHealFailed(ctx, j, "TorBox state: "+rec.DownloadState)
+				continue
+			}
+			if !rec.DownloadFinished || !rec.DownloadPresent {
+				continue
+			}
+			w.finishHealAt(ctx, j, rec.Name, w.cfg.TorrentPath())
+			continue
+		}
+		rec, ok := usenetByID[j.TorBoxID]
 		if !ok {
 			continue // the resubmitted download is not listed yet
 		}
@@ -50,16 +78,17 @@ func (w *Workers) healReconcileOnce(ctx context.Context) error {
 		if !rec.DownloadFinished || !rec.DownloadPresent {
 			continue // still downloading
 		}
-		w.finishHeal(ctx, j, rec)
+		w.finishHealAt(ctx, j, rec.Name, w.cfg.UsenetPath())
 	}
 	return nil
 }
 
-// finishHeal repoints every broken symlink of a job to its new release, then
-// returns the job to `imported`.
-func (w *Workers) finishHeal(ctx context.Context, j *job.Job, rec torbox.UsenetDownload) {
+// finishHealAt repoints every broken symlink of a job to its new release
+// (resolved under mountBase), then returns the job to `imported`. Protocol-
+// agnostic: callers pass UsenetPath() or TorrentPath().
+func (w *Workers) finishHealAt(ctx context.Context, j *job.Job, relName, mountBase string) {
 	log := w.logger.With("job_id", j.ID, "torbox_id", j.TorBoxID)
-	newReleaseDir, err := w.resolveStoragePath(ctx, rec.Name)
+	newReleaseDir, err := w.resolveStoragePathIn(ctx, mountBase, relName)
 	if err != nil {
 		log.Debug("heal: waiting for webdav path", "error", err)
 		return // retry next tick
@@ -109,7 +138,7 @@ func (w *Workers) finishHeal(ctx context.Context, j *job.Job, rec torbox.UsenetD
 	j.State = job.StateImported
 	// Keep storage_path in symlink-farm form so discovery still matches it
 	// by release name and the deleter's guarded cleanup stays correct.
-	j.StoragePath = filepath.Join(w.cfg.SymlinkRoot, j.Category, rec.Name)
+	j.StoragePath = filepath.Join(w.cfg.SymlinkRoot, j.Category, relName)
 	j.ProgressPct = 100
 	j.HealCount = 0 // a successful heal clears the consecutive-failure count
 	j.LastHealedAt = &now
@@ -300,28 +329,59 @@ func (w *Workers) triggerHeals(ctx context.Context) error {
 	return nil
 }
 
-// startHeal resubmits a job's stored NZB to TorBox and moves it to `healing`.
+// startHeal resubmits a job's stored artifact to TorBox and moves it to
+// `healing`. It branches on protocol: usenet resubmits the stored NZB, torrent
+// resubmits the stored magnet/.torrent (00 §19.4, FR-HEAL-1).
 func (w *Workers) startHeal(ctx context.Context, j *job.Job, brokenCount int) {
-	log := w.logger.With("job_id", j.ID, "nzb_name", j.NZBName)
+	log := w.logger.With("job_id", j.ID, "name", j.NZBName, "protocol", j.Protocol)
 	w.emitHealEvent("detected", j, healEventExtra{})
-	if len(j.NZBContent) == 0 && j.NZBURL == "" {
-		log.Error("heal: no stored NZB to resubmit")
-		w.markHealFailed(ctx, j, "no stored NZB content")
-		return
+
+	var newTorBoxID int64
+	var newHash string
+	if j.Protocol == "torrent" {
+		if j.TorrentMagnet == "" && len(j.TorrentFile) == 0 {
+			log.Error("heal: no stored torrent artifact to resubmit")
+			w.markHealFailed(ctx, j, "no stored torrent artifact")
+			return
+		}
+		res, err := w.tb.CreateTorrent(ctx, torbox.TorrentCreateRequest{
+			Magnet:         j.TorrentMagnet,
+			TorrentContent: j.TorrentFile,
+			TorrentName:    j.NZBName,
+		})
+		if err != nil {
+			log.Warn("heal: torrent resubmission failed", "error", err)
+			w.markHealFailed(ctx, j, "torrent resubmission failed: "+err.Error())
+			return
+		}
+		newTorBoxID = int64(res.TorrentID)
+		if newTorBoxID == 0 {
+			newTorBoxID = int64(res.QueuedID)
+		}
+		newHash = res.Hash
+	} else {
+		if len(j.NZBContent) == 0 && j.NZBURL == "" {
+			log.Error("heal: no stored NZB to resubmit")
+			w.markHealFailed(ctx, j, "no stored NZB content")
+			return
+		}
+		res, err := w.tb.CreateUsenetDownload(ctx, torbox.CreateRequest{
+			NZBContent: j.NZBContent,
+			NZBName:    j.NZBName + ".nzb",
+			Link:       j.NZBURL,
+		})
+		if err != nil {
+			log.Warn("heal: resubmission failed", "error", err)
+			w.markHealFailed(ctx, j, "resubmission failed: "+err.Error())
+			return
+		}
+		newTorBoxID = int64(res.UsenetDownloadID)
+		newHash = res.Hash
 	}
-	res, err := w.tb.CreateUsenetDownload(ctx, torbox.CreateRequest{
-		NZBContent: j.NZBContent,
-		NZBName:    j.NZBName + ".nzb",
-		Link:       j.NZBURL,
-	})
-	if err != nil {
-		log.Warn("heal: resubmission failed", "error", err)
-		w.markHealFailed(ctx, j, "resubmission failed: "+err.Error())
-		return
-	}
+
 	j.State = job.StateHealing
-	j.TorBoxID = int64(res.UsenetDownloadID)
-	j.TorBoxHash = res.Hash
+	j.TorBoxID = newTorBoxID
+	j.TorBoxHash = newHash
 	j.LastHealError = ""
 	if err := w.store.UpdateJob(ctx, j); err != nil {
 		log.Error("heal: persisting healing state, marking failed to avoid a duplicate resubmit",

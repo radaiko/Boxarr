@@ -104,6 +104,7 @@ func (w *Workers) importEpisodes(ctx context.Context, j *job.Job, sourceDir stri
 		return fmt.Errorf("marking job imported: %w", err)
 	}
 	log.Info("series release imported", "files", imported)
+	w.notifyEvent(ctx, "download_completed", j, map[string]any{"title": sr.Title, "files": imported})
 	w.maybePlexScan(ctx, filepath.Join(root, seriesFolder), "tv")
 	return nil
 }

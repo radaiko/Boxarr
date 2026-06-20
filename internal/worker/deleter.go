@@ -95,6 +95,7 @@ func (w *Workers) deleteJob(ctx context.Context, j *job.Job) {
 			log.Debug("removing symlink-farm directory", "dir", j.StoragePath, "error", err)
 		}
 	}
+	w.notifyEvent(ctx, "deletion_completed", j, nil)
 	if err := w.store.DeleteJob(ctx, j.ID); err != nil {
 		log.Error("removing deleted job row", "error", err)
 	}

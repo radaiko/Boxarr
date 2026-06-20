@@ -73,6 +73,10 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/series/{id}/seasons/{season}/search", h.searchSeason)
 	r.Get("/series/{id}/episodes/{episodeId}/search", h.searchEpisode)
 	r.Post("/series/{id}/grab", h.grabSeries)
+	r.Get("/notifications", h.listNotifications)
+	r.Get("/notifications/unread-count", h.unreadCount)
+	r.Put("/notifications/{id}/read", h.markNotificationRead)
+	r.Put("/notifications/read-all", h.markAllNotificationsRead)
 	return r
 }
 
