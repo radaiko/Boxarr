@@ -1,0 +1,15 @@
+<!doctype html>
+<!--
+  Committed placeholder so `go build`/`go test` (//go:embed all:dist) work before
+  the frontend is built. The Dockerfile/CI overwrite internal/web/dist with the
+  real Vite build (web/dist). See docs/specs/07-frontend.md + 08-config-deploy-ci.md.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Boxarr</title>
+  </head>
+  <body>
+    <p>Boxarr UI has not been built. Run <code>pnpm --dir web build</code> and copy <code>web/dist</code> into <code>internal/web/dist</code> (the Docker build does this automatically).</p>
+  </body>
+</html>

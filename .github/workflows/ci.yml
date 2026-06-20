@@ -28,6 +28,28 @@ jobs:
       - name: test
         run: go test ./... -race -cover
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: lint (typecheck)
+        run: pnpm lint
+      - name: build
+        run: pnpm build
+      - name: audit (advisory)
+        run: pnpm audit --audit-level=high || true
+
   docker-build:
     runs-on: ubuntu-latest
     steps:
