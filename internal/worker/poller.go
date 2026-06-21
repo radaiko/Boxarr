@@ -158,7 +158,7 @@ func (w *Workers) reconcile(ctx context.Context, j *job.Job, rec torbox.UsenetDo
 			}
 			return reconcileSettled
 		}
-		storagePath, files, ferr := buildSymlinkFarm(w.cfg.SymlinkRoot, j.Category, rec.Name, sourceDir)
+		storagePath, files, ferr := buildSymlinkFarm(w.set.SymlinkRoot(), j.Category, rec.Name, sourceDir)
 		if ferr != nil {
 			log.Error("building symlink farm", "error", ferr)
 			if uerr := w.store.UpdateJob(ctx, j); uerr != nil {
@@ -173,7 +173,7 @@ func (w *Workers) reconcile(ctx context.Context, j *job.Job, rec torbox.UsenetDo
 			// that no longer exists. Drop the premature dir and wait.
 			log.Debug("release folder present but empty; waiting for webdav contents",
 				"source", sourceDir)
-			if err := removeSymlinkDir(w.cfg.SymlinkRoot, storagePath); err != nil {
+			if err := removeSymlinkDir(w.set.SymlinkRoot(), storagePath); err != nil {
 				log.Warn("removing premature empty symlink dir",
 					"dir", storagePath, "error", err)
 			}
@@ -216,7 +216,7 @@ var (
 // path, named exactly as the download (rec.Name). It polls the filesystem
 // because the WebDAV listing can lag TorBox's completion flag.
 func (w *Workers) resolveStoragePath(ctx context.Context, name string) (string, error) {
-	return w.resolveStoragePathIn(ctx, w.cfg.UsenetPath(), name)
+	return w.resolveStoragePathIn(ctx, w.set.UsenetPath(), name)
 }
 
 // resolveStoragePathIn is resolveStoragePath against an explicit mount base

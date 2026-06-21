@@ -7,13 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/radaiko/boxarr/internal/config"
-	"github.com/radaiko/boxarr/internal/prowlarr"
-	"github.com/radaiko/boxarr/internal/store"
-	"github.com/radaiko/boxarr/internal/torbox"
+	"github.com/radaiko/boxarr/internal/settings"
 )
 
 func defaultSelectionCfg() *config.Config {
@@ -47,16 +44,16 @@ func TestFreeSearchRanksReleases(t *testing.T) {
 	}))
 	defer torboxSrv.Close()
 
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "s.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := mkStore(t)
+	set := mkSettings(t, st, defaultSelectionCfg())
+	ctx := context.Background()
+	_ = set.Set(ctx, settings.KeyProwlarrURL, prowlarrSrv.URL)
+	_ = set.Set(ctx, settings.KeyProwlarrAPIKey, "k")
+	_ = set.Set(ctx, settings.KeyTorBoxToken, "tok")
+	_ = set.Set(ctx, settings.KeyTorBoxBaseURL, torboxSrv.URL)
 	h := NewHandler(Deps{
-		Store: st, Cfg: defaultSelectionCfg(),
-		Prowlarr: prowlarr.New(prowlarrSrv.URL, "k"),
-		TorBox:   torbox.NewWithBaseURL("tok", torboxSrv.URL),
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Store: st, Settings: set,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}).Router()
 
 	rec := req(t, h, http.MethodGet, "/search?q=Movie+2024&type=movie", "", "127.0.0.1:1", "")

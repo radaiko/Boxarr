@@ -14,7 +14,7 @@ import (
 
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
-	"github.com/radaiko/boxarr/internal/metadata/tmdb"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 )
 
@@ -43,10 +43,11 @@ func newV1Cat(t *testing.T) (http.Handler, *store.Store) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	cfg := &config.Config{MovieLibraryRoot: "/data/movies"}
-	cat := catalog.New(st, tmdb.NewWithBaseURL("tok", fakeTMDB(t).URL), cfg)
+	set := mkSettings(t, st, &config.Config{MovieLibraryRoot: "/data/movies"})
+	_ = set.Set(context.Background(), settings.KeyTMDBBaseURL, fakeTMDB(t).URL)
+	cat := catalog.New(st, set)
 	h := NewHandler(Deps{
-		Store: st, Cfg: cfg, Catalog: cat,
+		Store: st, Settings: set, Catalog: cat,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test",
 	})
 	return h.Router(), st

@@ -14,6 +14,7 @@ import (
 	"github.com/radaiko/boxarr/internal/media"
 	"github.com/radaiko/boxarr/internal/prowlarr"
 	"github.com/radaiko/boxarr/internal/selection"
+	"github.com/radaiko/boxarr/internal/settings"
 )
 
 // Searcher is the subset of the Prowlarr client the catalog needs for auto-search.
@@ -21,9 +22,15 @@ type Searcher interface {
 	Search(ctx context.Context, p prowlarr.SearchParams) ([]prowlarr.ReleaseResource, error)
 }
 
-// SetSearcher wires the auto-search dependency (Prowlarr). When unset, the
-// SearchWantedFor* methods are graceful no-ops.
+// SetSearcher overrides the auto-search dependency (used by tests).
 func (s *Service) SetSearcher(p Searcher) { s.search = p }
+
+// liveSearcher resolves the current Prowlarr client from settings per call.
+type liveSearcher struct{ set *settings.Store }
+
+func (l liveSearcher) Search(ctx context.Context, p prowlarr.SearchParams) ([]prowlarr.ReleaseResource, error) {
+	return l.set.Prowlarr().Search(ctx, p)
+}
 
 var searchHTTP = &http.Client{Timeout: 60 * time.Second}
 
@@ -108,7 +115,7 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 // pickBest scores results with the configured selection score and returns the
 // best non-rejected release.
 func (s *Service) pickBest(results []prowlarr.ReleaseResource) (prowlarr.ReleaseResource, bool) {
-	cfg := selection.FromConfig(s.cfg)
+	cfg := s.set.SelectionConfig()
 	bestIdx, bestScore := -1, 0
 	for i, rr := range results {
 		rel := selection.Release{

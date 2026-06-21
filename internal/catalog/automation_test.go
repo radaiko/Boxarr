@@ -11,8 +11,8 @@ import (
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/media"
-	"github.com/radaiko/boxarr/internal/metadata/tmdb"
 	"github.com/radaiko/boxarr/internal/prowlarr"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 )
 
@@ -32,19 +32,23 @@ func selCfg() *config.Config {
 	}
 }
 
-func newCatalog(t *testing.T, cfg *config.Config) (*Service, *store.Store) {
+func newCatalog(t *testing.T, cfg *config.Config) (*Service, *store.Store, *settings.Store) {
 	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "c.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	return New(st, tmdb.NewWithBaseURL("tok", "http://unused"), cfg), st
+	set, err := settings.New(context.Background(), st, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(st, set), st, set
 }
 
 func TestAutoSearchGrabsBestForWantedMovie(t *testing.T) {
 	cfg := selCfg()
-	cat, st := newCatalog(t, cfg)
+	cat, st, _ := newCatalog(t, cfg)
 	ctx := context.Background()
 
 	// An NZB indexer endpoint the grab will fetch.
@@ -75,7 +79,7 @@ func TestAutoSearchGrabsBestForWantedMovie(t *testing.T) {
 }
 
 func TestAutoSearchDisabledWithoutSearcher(t *testing.T) {
-	cat, st := newCatalog(t, selCfg())
+	cat, st, _ := newCatalog(t, selCfg())
 	ctx := context.Background()
 	_, _ = st.CreateMovie(ctx, &media.Movie{TMDBID: 1, Title: "M", Monitored: true,
 		Status: media.MediaWanted, ReleaseDate: "2024-01-01"})
@@ -104,13 +108,11 @@ func TestRefreshMetadataPromotesAiredEpisode(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "r.db"))
-	if err != nil {
+	ctx := context.Background()
+	cat, st, set := newCatalog(t, cfg)
+	if err := set.Set(ctx, settings.KeyTMDBBaseURL, srv.URL); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = st.Close() })
-	cat := New(st, tmdb.NewWithBaseURL("tok", srv.URL), cfg)
-	ctx := context.Background()
 
 	// Seed a series with only episode 1 present (missing status for ep flow).
 	sid, _ := st.CreateSeries(ctx, &media.Series{TMDBID: 1, Title: "BB", Monitored: true})

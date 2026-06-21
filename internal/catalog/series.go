@@ -32,7 +32,7 @@ func (s *Service) LookupSeries(ctx context.Context, term string) ([]SeriesCandid
 		if err != nil {
 			return nil, fmt.Errorf("invalid tvdb id %q", rest)
 		}
-		found, ferr := s.tmdb.FindByTVDB(ctx, id)
+		found, ferr := s.set.TMDB().FindByTVDB(ctx, id)
 		if ferr != nil {
 			return nil, ferr
 		}
@@ -48,7 +48,7 @@ func (s *Service) LookupSeries(ctx context.Context, term string) ([]SeriesCandid
 		}
 		return s.tvCandidate(ctx, id)
 	}
-	results, err := s.tmdb.SearchTV(ctx, term, 0)
+	results, err := s.set.TMDB().SearchTV(ctx, term, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (s *Service) LookupSeries(ctx context.Context, term string) ([]SeriesCandid
 }
 
 func (s *Service) tvCandidate(ctx context.Context, tmdbID int64) ([]SeriesCandidate, error) {
-	d, err := s.tmdb.TVDetails(ctx, int(tmdbID))
+	d, err := s.set.TMDB().TVDetails(ctx, int(tmdbID))
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (s *Service) AddSeries(ctx context.Context, tmdbID int64, monitored bool, m
 	if existing, _ := s.store.GetSeriesByTMDB(ctx, tmdbID); existing != nil {
 		return existing, ErrAlreadyExists
 	}
-	d, err := s.tmdb.TVDetails(ctx, int(tmdbID))
+	d, err := s.set.TMDB().TVDetails(ctx, int(tmdbID))
 	if err != nil {
 		return nil, fmt.Errorf("tmdb tv details: %w", err)
 	}
@@ -95,7 +95,7 @@ func (s *Service) AddSeries(ctx context.Context, tmdbID int64, monitored bool, m
 		Title: d.Name, SortTitle: strings.ToLower(d.Name), Year: yearOf(d.FirstAirDate),
 		Overview: d.Overview, SeriesType: "standard", TMDBStatus: d.Status,
 		Monitored: monitored, SeasonFolder: true, QualityProfileID: 1,
-		RootFolderPath: s.cfg.TVLibraryRoot, PosterPath: d.PosterPath, BackdropPath: d.BackdropPath,
+		RootFolderPath: s.set.TVLibraryRoot(), PosterPath: d.PosterPath, BackdropPath: d.BackdropPath,
 	}
 	now := time.Now()
 	sr.LastMetadataSync = &now
@@ -131,7 +131,7 @@ func (s *Service) syncSeasons(ctx context.Context, sr *media.Series, seasons []t
 		if err != nil {
 			return fmt.Errorf("upserting season %d: %w", ss.SeasonNumber, err)
 		}
-		sd, err := s.tmdb.TVSeason(ctx, int(sr.TMDBID), ss.SeasonNumber)
+		sd, err := s.set.TMDB().TVSeason(ctx, int(sr.TMDBID), ss.SeasonNumber)
 		if err != nil {
 			return fmt.Errorf("tmdb season %d: %w", ss.SeasonNumber, err)
 		}

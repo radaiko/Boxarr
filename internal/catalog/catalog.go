@@ -10,26 +10,30 @@ import (
 	"strings"
 	"time"
 
-	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/media"
-	"github.com/radaiko/boxarr/internal/metadata/tmdb"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 )
 
 // ErrAlreadyExists is returned by AddMovie when the TMDB id is already cataloged.
 var ErrAlreadyExists = errors.New("already in catalog")
 
-// Service ingests TMDB titles into the store and (optionally) auto-searches.
+// Service ingests TMDB titles into the store and (optionally) auto-searches. It
+// reads connections/paths live from the settings store, so UI changes apply
+// without a restart.
 type Service struct {
 	store  *store.Store
-	tmdb   *tmdb.Client
-	cfg    *config.Config
+	set    *settings.Store
 	search Searcher // optional; nil = auto-search disabled
 }
 
-// New constructs a catalog Service.
-func New(st *store.Store, t *tmdb.Client, cfg *config.Config) *Service {
-	return &Service{store: st, tmdb: t, cfg: cfg}
+// New constructs a catalog Service backed by the live settings store. Its
+// default searcher resolves the current Prowlarr client per call (hot-reload);
+// tests may override it via SetSearcher.
+func New(st *store.Store, set *settings.Store) *Service {
+	s := &Service{store: st, set: set}
+	s.search = liveSearcher{set}
+	return s
 }
 
 // MovieCandidate is a lookup result the SPA can add.
@@ -52,7 +56,7 @@ func (s *Service) LookupMovies(ctx context.Context, term string) ([]MovieCandida
 		if err != nil {
 			return nil, fmt.Errorf("invalid tmdb id %q", rest)
 		}
-		d, err := s.tmdb.MovieDetails(ctx, int(id))
+		d, err := s.set.TMDB().MovieDetails(ctx, int(id))
 		if err != nil {
 			return nil, err
 		}
@@ -61,7 +65,7 @@ func (s *Service) LookupMovies(ctx context.Context, term string) ([]MovieCandida
 		s.markInLibrary(ctx, &c)
 		return []MovieCandidate{c}, nil
 	}
-	results, err := s.tmdb.SearchMovie(ctx, strings.TrimPrefix(term, "imdb:"), 0)
+	results, err := s.set.TMDB().SearchMovie(ctx, strings.TrimPrefix(term, "imdb:"), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +91,7 @@ func (s *Service) AddMovie(ctx context.Context, tmdbID int64, monitored bool) (*
 	if existing, _ := s.store.GetMovieByTMDB(ctx, tmdbID); existing != nil {
 		return existing, ErrAlreadyExists
 	}
-	d, err := s.tmdb.MovieDetails(ctx, int(tmdbID))
+	d, err := s.set.TMDB().MovieDetails(ctx, int(tmdbID))
 	if err != nil {
 		return nil, fmt.Errorf("tmdb movie details: %w", err)
 	}
@@ -104,7 +108,7 @@ func (s *Service) AddMovie(ctx context.Context, tmdbID int64, monitored bool) (*
 		Runtime:             d.Runtime,
 		Monitored:           monitored,
 		QualityProfileID:    1,
-		RootFolderPath:      s.cfg.MovieLibraryRoot,
+		RootFolderPath:      s.set.MovieLibraryRoot(),
 		PosterPath:          d.PosterPath,
 		BackdropPath:        d.BackdropPath,
 	}

@@ -62,7 +62,7 @@ func (w *Workers) healReconcileOnce(ctx context.Context) error {
 			if !rec.DownloadFinished || !rec.DownloadPresent {
 				continue
 			}
-			w.finishHealAt(ctx, j, rec.Name, w.cfg.TorrentPath())
+			w.finishHealAt(ctx, j, rec.Name, w.set.TorrentPath())
 			continue
 		}
 		rec, ok := usenetByID[j.TorBoxID]
@@ -78,7 +78,7 @@ func (w *Workers) healReconcileOnce(ctx context.Context) error {
 		if !rec.DownloadFinished || !rec.DownloadPresent {
 			continue // still downloading
 		}
-		w.finishHealAt(ctx, j, rec.Name, w.cfg.UsenetPath())
+		w.finishHealAt(ctx, j, rec.Name, w.set.UsenetPath())
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func (w *Workers) finishHealAt(ctx context.Context, j *job.Job, relName, mountBa
 	j.State = job.StateImported
 	// Keep storage_path in symlink-farm form so discovery still matches it
 	// by release name and the deleter's guarded cleanup stays correct.
-	j.StoragePath = filepath.Join(w.cfg.SymlinkRoot, j.Category, relName)
+	j.StoragePath = filepath.Join(w.set.SymlinkRoot(), j.Category, relName)
 	j.ProgressPct = 100
 	j.HealCount = 0 // a successful heal clears the consecutive-failure count
 	j.LastHealedAt = &now
@@ -182,7 +182,7 @@ func (w *Workers) discoverSymlinks(ctx context.Context) error {
 			byRelease[filepath.Base(j.StoragePath)] = j
 		}
 	}
-	for _, root := range w.cfg.HealLibraryRoots {
+	for _, root := range w.set.HealLibraryRoots() {
 		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil // skip unreadable entries, keep walking
@@ -197,7 +197,7 @@ func (w *Workers) discoverSymlinks(ctx context.Context) error {
 			if !filepath.IsAbs(target) {
 				target = filepath.Join(filepath.Dir(path), target)
 			}
-			release, ok := releaseUnderRoot(w.cfg.WebDAVMountRoot, target)
+			release, ok := releaseUnderRoot(w.set.WebDAVMountRoot(), target)
 			if !ok {
 				return nil // points outside the WebDAV mount — not ours
 			}
@@ -310,16 +310,16 @@ func (w *Workers) triggerHeals(ctx context.Context) error {
 		if j.State != job.StateImported && j.State != job.StateHealFailed {
 			continue // healing already, or deleted — not eligible
 		}
-		if int(j.HealCount) >= w.cfg.HealMaxAttempts {
+		if int(j.HealCount) >= w.set.HealMaxAttempts() {
 			continue // exhausted — manual intervention needed
 		}
 		if j.LastHealedAt != nil {
-			backoff := healBackoff(w.cfg.HealBackoffInitial, j.HealCount)
+			backoff := healBackoff(w.set.HealBackoffInitial(), j.HealCount)
 			if timeNow().Sub(*j.LastHealedAt) < backoff {
 				continue // still in backoff
 			}
 		}
-		if w.cfg.HealDryRun {
+		if w.set.HealDryRun() {
 			w.logger.Info("heal: dry-run, would heal",
 				"job_id", j.ID, "broken_symlinks", count)
 			continue

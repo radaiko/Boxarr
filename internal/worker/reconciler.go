@@ -73,8 +73,8 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 
 // mountBases returns the distinct mount roots to sweep (usenet + torrent).
 func (w *Workers) mountBases() []string {
-	u := w.cfg.UsenetPath()
-	tp := w.cfg.TorrentPath()
+	u := w.set.UsenetPath()
+	tp := w.set.TorrentPath()
 	if tp == u {
 		return []string{u}
 	}

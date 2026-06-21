@@ -20,13 +20,13 @@ func (h *Handler) seriesLookup(w http.ResponseWriter, r *http.Request) {
 		h.writeJSON(w, http.StatusOK, []any{})
 		return
 	}
-	found, err := h.deps.TMDB.FindByTVDB(ctx, tvdbID)
+	found, err := h.deps.Settings.TMDB().FindByTVDB(ctx, tvdbID)
 	if err != nil || len(found.TVResults) == 0 {
 		h.writeJSON(w, http.StatusOK, []any{}) // genuinely unresolvable → Seerr shows "not found"
 		return
 	}
 	tv := found.TVResults[0]
-	d, err := h.deps.TMDB.TVDetails(ctx, tv.ID)
+	d, err := h.deps.Settings.TMDB().TVDetails(ctx, tv.ID)
 	if err != nil {
 		h.writeJSON(w, http.StatusOK, []any{})
 		return
@@ -39,8 +39,8 @@ func (h *Handler) seriesLookup(w http.ResponseWriter, r *http.Request) {
 		"title": d.Name, "sortTitle": strings.ToLower(d.Name), "status": strings.ToLower(d.Status),
 		"overview": d.Overview, "year": yearOf(d.FirstAirDate), "tvdbId": tvdbID,
 		"titleSlug": slug(d.Name), "seasons": seasons, "monitored": false, "seasonFolder": true,
-		"remotePoster": h.deps.TMDB.ImageURL("w500", d.PosterPath),
-		"images":       []map[string]any{{"coverType": "poster", "url": h.deps.TMDB.ImageURL("w500", d.PosterPath)}},
+		"remotePoster": h.deps.Settings.TMDB().ImageURL("w500", d.PosterPath),
+		"images":       []map[string]any{{"coverType": "poster", "url": h.deps.Settings.TMDB().ImageURL("w500", d.PosterPath)}},
 	}
 	// Include id only when already tracked (drives Seerr to the update path).
 	if sr, _ := h.deps.Store.GetSeriesByTMDB(ctx, int64(d.ID)); sr != nil {
@@ -71,7 +71,7 @@ func (h *Handler) addSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Resolve tvdb -> tmdb.
-	found, err := h.deps.TMDB.FindByTVDB(ctx, body.TVDBID)
+	found, err := h.deps.Settings.TMDB().FindByTVDB(ctx, body.TVDBID)
 	if err != nil || len(found.TVResults) == 0 {
 		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "series not found"})
 		return

@@ -24,8 +24,8 @@ func (h *Handler) storage(w http.ResponseWriter, r *http.Request) {
 		"usedBytes": used,
 		"downloads": map[string]any{"active": active},
 	}
-	if h.deps.TorBox != nil {
-		if u, err := h.deps.TorBox.UserMe(ctx); err == nil {
+	if h.deps.Settings.TorBox() != nil {
+		if u, err := h.deps.Settings.TorBox().UserMe(ctx); err == nil {
 			tier := int(u.Plan)
 			slots, ok := planSlots[tier]
 			if !ok {

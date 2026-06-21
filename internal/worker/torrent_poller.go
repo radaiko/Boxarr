@@ -113,7 +113,7 @@ func (w *Workers) reconcileTorrent(ctx context.Context, j *job.Job, rec torbox.T
 	j.ETASeconds = rec.ETASeconds()
 
 	if rec.DownloadFinished && rec.DownloadPresent {
-		sourceDir, err := w.resolveStoragePathIn(ctx, w.cfg.TorrentPath(), rec.Name)
+		sourceDir, err := w.resolveStoragePathIn(ctx, w.set.TorrentPath(), rec.Name)
 		if err != nil {
 			log.Debug("waiting for torrent webdav path", "error", err)
 			if uerr := w.store.UpdateJob(ctx, j); uerr != nil {
@@ -132,13 +132,13 @@ func (w *Workers) reconcileTorrent(ctx context.Context, j *job.Job, rec torbox.T
 			return reconcileSettled
 		}
 		// Legacy farm fallback (no media link).
-		storagePath, files, ferr := buildSymlinkFarm(w.cfg.SymlinkRoot, j.Category, rec.Name, sourceDir)
+		storagePath, files, ferr := buildSymlinkFarm(w.set.SymlinkRoot(), j.Category, rec.Name, sourceDir)
 		if ferr != nil || files == 0 {
 			if ferr != nil {
 				log.Error("building symlink farm", "error", ferr)
 			}
 			if storagePath != "" && files == 0 {
-				_ = removeSymlinkDir(w.cfg.SymlinkRoot, storagePath)
+				_ = removeSymlinkDir(w.set.SymlinkRoot(), storagePath)
 			}
 			if uerr := w.store.UpdateJob(ctx, j); uerr != nil {
 				log.Error("persisting progress", "error", uerr)

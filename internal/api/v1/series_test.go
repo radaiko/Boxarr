@@ -13,7 +13,7 @@ import (
 
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
-	"github.com/radaiko/boxarr/internal/metadata/tmdb"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 )
 
@@ -48,9 +48,10 @@ func newV1Series(t *testing.T) (http.Handler, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	cfg := &config.Config{TVLibraryRoot: "/data/tv"}
-	cat := catalog.New(st, tmdb.NewWithBaseURL("tok", fakeTMDBSeries(t).URL), cfg)
-	h := NewHandler(Deps{Store: st, Cfg: cfg, Catalog: cat,
+	set := mkSettings(t, st, &config.Config{TVLibraryRoot: "/data/tv"})
+	_ = set.Set(context.Background(), settings.KeyTMDBBaseURL, fakeTMDBSeries(t).URL)
+	cat := catalog.New(st, set)
+	h := NewHandler(Deps{Store: st, Settings: set, Catalog: cat,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}).Router()
 	return h, st
 }

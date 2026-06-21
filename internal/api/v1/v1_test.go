@@ -13,19 +13,40 @@ import (
 
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/media"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
-	"github.com/radaiko/boxarr/internal/torbox"
 )
 
-func newV1(t *testing.T, apiKey string, tb *torbox.Client) (http.Handler, *store.Store) {
+// mkSettings builds a settings.Store seeded by cfg over a fresh DB.
+func mkSettings(t *testing.T, st *store.Store, cfg *config.Config) *settings.Store {
+	t.Helper()
+	set, err := settings.New(context.Background(), st, cfg)
+	if err != nil {
+		t.Fatalf("settings.New: %v", err)
+	}
+	return set
+}
+
+func mkStore(t *testing.T) *store.Store {
 	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "v1.db"))
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+func newV1(t *testing.T, apiKey, torboxBaseURL string) (http.Handler, *store.Store) {
+	t.Helper()
+	st := mkStore(t)
+	set := mkSettings(t, st, &config.Config{APIKey: apiKey})
+	if torboxBaseURL != "" {
+		_ = set.Set(context.Background(), settings.KeyTorBoxBaseURL, torboxBaseURL)
+		_ = set.Set(context.Background(), settings.KeyTorBoxToken, "tok")
+	}
 	h := NewHandler(Deps{
-		Store: st, Cfg: &config.Config{APIKey: apiKey}, TorBox: tb,
+		Store: st, Settings: set,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test",
 	})
 	return h.Router(), st
@@ -51,7 +72,7 @@ func req(t *testing.T, h http.Handler, method, path, key, remote, body string) *
 }
 
 func TestAuthLoopbackBypassAndRejection(t *testing.T) {
-	h, _ := newV1(t, "", nil) // no key configured
+	h, _ := newV1(t, "", "") // no key configured
 	if rec := req(t, h, http.MethodGet, "/status", "", "127.0.0.1:5555", ""); rec.Code != http.StatusOK {
 		t.Errorf("loopback w/o key should be 200, got %d", rec.Code)
 	}
@@ -61,7 +82,7 @@ func TestAuthLoopbackBypassAndRejection(t *testing.T) {
 }
 
 func TestAuthRequiresKeyWhenSet(t *testing.T) {
-	h, _ := newV1(t, "secret", nil)
+	h, _ := newV1(t, "secret", "")
 	if rec := req(t, h, http.MethodGet, "/status", "", "127.0.0.1:5555", ""); rec.Code != http.StatusUnauthorized {
 		t.Errorf("loopback must still need the key once set, got %d", rec.Code)
 	}
@@ -74,7 +95,7 @@ func TestAuthRequiresKeyWhenSet(t *testing.T) {
 }
 
 func TestSettingsRoundTrip(t *testing.T) {
-	h, _ := newV1(t, "", nil)
+	h, _ := newV1(t, "", "")
 	rec := req(t, h, http.MethodPut, "/settings", "", "127.0.0.1:1", `{"settings":{"prowlarr.url":"http://x:9696"}}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT settings: %d body=%s", rec.Code, rec.Body.String())
@@ -91,7 +112,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 }
 
 func TestStatusCounts(t *testing.T) {
-	h, st := newV1(t, "", nil)
+	h, st := newV1(t, "", "")
 	if _, err := st.CreateMovie(context.Background(), &media.Movie{TMDBID: 1, Title: "M"}); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +132,7 @@ func TestAccountProxiesUserMe(t *testing.T) {
 		_, _ = w.Write([]byte(`{"success":true,"data":{"plan":2,"is_subscribed":true,"total_downloaded":123}}`))
 	}))
 	defer srv.Close()
-	h, _ := newV1(t, "", torbox.NewWithBaseURL("tok", srv.URL))
+	h, _ := newV1(t, "", srv.URL)
 	rec := req(t, h, http.MethodGet, "/account", "", "127.0.0.1:1", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("account: %d", rec.Code)

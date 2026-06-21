@@ -91,7 +91,7 @@ func (w *Workers) deleteJob(ctx context.Context, j *job.Job) {
 	}
 	// Remove the per-release symlink-farm directory (legacy farm path).
 	if j.StoragePath != "" {
-		if err := removeSymlinkDir(w.cfg.SymlinkRoot, j.StoragePath); err != nil {
+		if err := removeSymlinkDir(w.set.SymlinkRoot(), j.StoragePath); err != nil {
 			log.Debug("removing symlink-farm directory", "dir", j.StoragePath, "error", err)
 		}
 	}

@@ -16,6 +16,7 @@ import (
 
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
@@ -89,6 +90,9 @@ func (f *fakeTorBox) ControlTorrent(_ context.Context, _ int64, op string) error
 
 func (f *fakeTorBox) Ping(context.Context) error { return nil }
 
+// testWorkers returns the workers plus the seed *config.Config. Tests mutate the
+// returned cfg directly; the settings.Store falls back to it (no DB override in
+// tests), so those mutations are reflected live through the worker's getters.
 func testWorkers(t *testing.T, tb TorBoxAPI) (*Workers, *store.Store, *config.Config) {
 	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "w.db"))
@@ -101,8 +105,12 @@ func testWorkers(t *testing.T, tb TorBoxAPI) (*Workers, *store.Store, *config.Co
 		SymlinkRoot:  t.TempDir(),
 		PollInterval: 10 * time.Millisecond,
 	}
+	set, err := settings.New(context.Background(), st, cfg)
+	if err != nil {
+		t.Fatalf("settings.New: %v", err)
+	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(st, tb, cfg, logger), st, cfg
+	return New(st, tb, set, logger), st, cfg
 }
 
 func TestSubmitterSubmitsPendingJob(t *testing.T) {
@@ -675,11 +683,11 @@ func TestPollerRefreshesWebDAVWhenAllFinished(t *testing.T) {
 	defer srv.Close()
 	shortPathRetry(t)
 
-	w, st, _ := testWorkers(t, &fakeTorBox{})
-	w.cfg.TorBoxWebDAVUser = "wuser"
-	w.cfg.TorBoxWebDAVPass = "wpass"
-	w.cfg.TorBoxWebDAVRefreshURL = srv.URL
-	w.cfg.WebDAVRefreshCooldown = time.Minute
+	w, st, cfg := testWorkers(t, &fakeTorBox{})
+	cfg.TorBoxWebDAVUser = "wuser"
+	cfg.TorBoxWebDAVPass = "wpass"
+	cfg.TorBoxWebDAVRefreshURL = srv.URL
+	cfg.WebDAVRefreshCooldown = time.Minute
 
 	ctx := context.Background()
 	id, _ := st.CreateJob(ctx, &job.Job{State: job.StateDownloading, Category: "sonarr", NZBName: "Done"})
@@ -714,11 +722,11 @@ func TestPollerSkipsRefreshWhileDownloadOngoing(t *testing.T) {
 	defer srv.Close()
 	shortPathRetry(t)
 
-	w, st, _ := testWorkers(t, &fakeTorBox{})
-	w.cfg.TorBoxWebDAVUser = "wuser"
-	w.cfg.TorBoxWebDAVPass = "wpass"
-	w.cfg.TorBoxWebDAVRefreshURL = srv.URL
-	w.cfg.WebDAVRefreshCooldown = time.Minute
+	w, st, cfg := testWorkers(t, &fakeTorBox{})
+	cfg.TorBoxWebDAVUser = "wuser"
+	cfg.TorBoxWebDAVPass = "wpass"
+	cfg.TorBoxWebDAVRefreshURL = srv.URL
+	cfg.WebDAVRefreshCooldown = time.Minute
 
 	ctx := context.Background()
 	a, _ := st.CreateJob(ctx, &job.Job{State: job.StateDownloading, Category: "sonarr", NZBName: "A"})
@@ -766,11 +774,11 @@ func TestPollerWebDAVRefreshBacksOffOn429(t *testing.T) {
 	defer srv.Close()
 	shortPathRetry(t)
 
-	w, st, _ := testWorkers(t, &fakeTorBox{})
-	w.cfg.TorBoxWebDAVUser = "wuser"
-	w.cfg.TorBoxWebDAVPass = "wpass"
-	w.cfg.TorBoxWebDAVRefreshURL = srv.URL
-	w.cfg.WebDAVRefreshCooldown = time.Nanosecond // cooldown alone would not block
+	w, st, cfg := testWorkers(t, &fakeTorBox{})
+	cfg.TorBoxWebDAVUser = "wuser"
+	cfg.TorBoxWebDAVPass = "wpass"
+	cfg.TorBoxWebDAVRefreshURL = srv.URL
+	cfg.WebDAVRefreshCooldown = time.Nanosecond // cooldown alone would not block
 
 	ctx := context.Background()
 	id, _ := st.CreateJob(ctx, &job.Job{State: job.StateDownloading, Category: "sonarr", NZBName: "Done"})

@@ -13,11 +13,11 @@ import (
 
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
-	"github.com/radaiko/boxarr/internal/metadata/tmdb"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 )
 
-func fakeTMDB(t *testing.T) *tmdb.Client {
+func fakeTMDBBase(t *testing.T) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -36,7 +36,7 @@ func fakeTMDB(t *testing.T) *tmdb.Client {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return tmdb.NewWithBaseURL("tok", srv.URL)
+	return srv.URL
 }
 
 func newSurface(t *testing.T, kind Kind) (http.Handler, *store.Store) {
@@ -46,10 +46,14 @@ func newSurface(t *testing.T, kind Kind) (http.Handler, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	tm := fakeTMDB(t)
 	cfg := &config.Config{SeerrAPIKeys: []string{"secret"}, TVLibraryRoot: t.TempDir(), MovieLibraryRoot: t.TempDir()}
-	cat := catalog.New(st, tm, cfg)
-	deps := Deps{Store: st, Cfg: cfg, Catalog: cat, TMDB: tm, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	set, err := settings.New(context.Background(), st, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = set.Set(context.Background(), settings.KeyTMDBBaseURL, fakeTMDBBase(t))
+	cat := catalog.New(st, set)
+	deps := Deps{Store: st, Settings: set, Catalog: cat, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	return NewRouter(kind, deps), st
 }
 

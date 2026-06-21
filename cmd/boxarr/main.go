@@ -20,11 +20,8 @@ import (
 	apiv1 "github.com/radaiko/boxarr/internal/api/v1"
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
-	"github.com/radaiko/boxarr/internal/metadata/tmdb"
-	"github.com/radaiko/boxarr/internal/plex"
-	"github.com/radaiko/boxarr/internal/prowlarr"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
-	"github.com/radaiko/boxarr/internal/torbox"
 	"github.com/radaiko/boxarr/internal/web"
 	"github.com/radaiko/boxarr/internal/worker"
 )
@@ -58,38 +55,38 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := worker.EnsureCategoryDirs(cfg.SymlinkRoot, cfg.Categories); err != nil {
-		return fmt.Errorf("preparing symlink category directories: %w", err)
-	}
-
 	st, err := store.Open(ctx, cfg.DatabasePath)
 	if err != nil {
 		return fmt.Errorf("opening store: %w", err)
 	}
 	defer func() { _ = st.Close() }()
 
-	tb := torbox.New(cfg.TorBoxAPIToken)
-	tmdbClient := tmdb.New(cfg.TMDBAPIKey)
-	prowlarrClient := prowlarr.New(cfg.ProwlarrURL, cfg.ProwlarrAPIKey)
-	cat := catalog.New(st, tmdbClient, cfg)
-	cat.SetSearcher(prowlarrClient)
-	workers := worker.New(st, tb, cfg, logger)
-	if cfg.PlexEnabled() {
-		workers.SetPlex(plex.New(cfg.PlexURL, cfg.PlexToken))
+	// The live settings store is the single config source: env/defaults seed it,
+	// DB-persisted UI values override, and clients hot-reload on change.
+	set, err := settings.New(ctx, st, cfg)
+	if err != nil {
+		return fmt.Errorf("loading settings: %w", err)
 	}
-	if cfg.AutomationEnabled {
-		workers.SetAutomation(cat)
-		logger.Info("automation enabled", "search_interval", cfg.SearchInterval.String(),
-			"metadata_interval", cfg.MetadataInterval.String())
+
+	if root := set.SymlinkRoot(); root != "" {
+		if err := worker.EnsureCategoryDirs(root, set.Categories()); err != nil {
+			logger.Warn("preparing symlink category directories", "error", err)
+		}
 	}
+
+	tbAPI := worker.LiveTorBox(set)
+	cat := catalog.New(st, set)
+	workers := worker.New(st, tbAPI, set, logger)
+	workers.SetPlex(worker.LivePlex(set))
+	workers.SetAutomation(cat) // loops self-gate on the live AutomationEnabled() setting
+
 	srv := api.NewServer(st, cfg, logger)
-	srv.SetHealth(api.NewHealth(st, tb, 5*time.Minute))
+	srv.SetHealth(api.NewHealth(st, tbAPI, 5*time.Minute))
 	srv.SetHealReporter(workers)
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
-		Store: st, Cfg: cfg, TorBox: tb, Prowlarr: prowlarrClient,
-		Catalog: cat, Health: workers, Logger: logger, Version: version,
+		Store: st, Settings: set, Catalog: cat, Health: workers, Logger: logger, Version: version,
 	}).Router())
-	seerrDeps := seerr.Deps{Store: st, Cfg: cfg, Catalog: cat, TMDB: tmdbClient, Logger: logger}
+	seerrDeps := seerr.Deps{Store: st, Settings: set, Catalog: cat, Logger: logger}
 	srv.SetSeerr(
 		seerr.NewRouter(seerr.KindSonarr, seerrDeps),
 		seerr.NewRouter(seerr.KindRadarr, seerrDeps),
@@ -120,8 +117,8 @@ func run() error {
 
 	logger.Info("boxarr started",
 		"version", version,
-		"listen_addr", cfg.ListenAddr, "usenet_path", cfg.UsenetPath(),
-		"poll_interval", cfg.PollInterval.String())
+		"listen_addr", cfg.ListenAddr, "usenet_path", set.UsenetPath(),
+		"poll_interval", set.PollInterval().String())
 
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		stop()

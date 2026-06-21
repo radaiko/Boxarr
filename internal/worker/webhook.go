@@ -51,7 +51,7 @@ func healWebhookWants(events []string, event string) bool {
 // and event is in HealWebhookEvents. The POST runs in its own goroutine so a
 // slow or unreachable webhook endpoint never stalls the healer.
 func (w *Workers) emitHealEvent(event string, j *job.Job, extra healEventExtra) {
-	if w.cfg.HealWebhookURL == "" || !healWebhookWants(w.cfg.HealWebhookEvents, event) {
+	if w.set.HealWebhookURL() == "" || !healWebhookWants(w.set.HealWebhookEvents(), event) {
 		return
 	}
 	payload := webhookPayload{
@@ -78,7 +78,7 @@ func (w *Workers) postHealWebhook(payload webhookPayload) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.cfg.HealWebhookURL,
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.set.HealWebhookURL(),
 		bytes.NewReader(body))
 	if err != nil {
 		w.logger.Error("heal webhook: building request", "error", err)

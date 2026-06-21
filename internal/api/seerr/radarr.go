@@ -19,7 +19,7 @@ func (h *Handler) movieLookup(w http.ResponseWriter, r *http.Request) {
 		h.writeJSON(w, http.StatusOK, []any{})
 		return
 	}
-	d, err := h.deps.TMDB.MovieDetails(ctx, tmdbID)
+	d, err := h.deps.Settings.TMDB().MovieDetails(ctx, tmdbID)
 	if err != nil {
 		h.writeJSON(w, http.StatusOK, []any{})
 		return
@@ -28,7 +28,7 @@ func (h *Handler) movieLookup(w http.ResponseWriter, r *http.Request) {
 		"title": d.Title, "tmdbId": d.ID, "imdbId": d.IMDBID, "year": yearOf(d.ReleaseDate),
 		"titleSlug": slug(d.Title) + "-" + strconv.Itoa(d.ID), "isAvailable": false,
 		"monitored": false, "hasFile": false, "id": 0,
-		"images": []map[string]any{{"coverType": "poster", "url": h.deps.TMDB.ImageURL("w500", d.PosterPath)}},
+		"images": []map[string]any{{"coverType": "poster", "url": h.deps.Settings.TMDB().ImageURL("w500", d.PosterPath)}},
 	}
 	if m, _ := h.deps.Store.GetMovieByTMDB(ctx, int64(d.ID)); m != nil {
 		obj["id"] = m.ID
