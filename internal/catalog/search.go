@@ -50,7 +50,7 @@ func (s *Service) SearchWantedForMovie(ctx context.Context, movieID int64) error
 	// Escalating, release-gated cadence: hourly for the first 48h after release,
 	// then daily for two weeks, then monthly — until acquired. A never-searched
 	// item (e.g. a fresh Seerr request) searches immediately.
-	if !searchDue(m.ReleaseDate, m.LastSearchedAt, time.Now()) {
+	if !searchDue(m.ReleaseDate, m.LastSearchedAt, time.Now(), s.cadenceFromSettings()) {
 		return nil
 	}
 	_ = s.store.MarkMovieSearched(ctx, m.ID)
@@ -98,12 +98,13 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 		kind = "anime"
 	}
 	today := time.Now().UTC().Format("2006-01-02")
+	cad := s.cadenceFromSettings()
 	for _, ep := range episodes {
 		if ep.HasFile || !ep.Monitored || ep.AirDate == "" || ep.AirDate > today {
 			continue
 		}
-		// Release-gated escalating cadence (hourly 48h → daily 2wk → monthly).
-		if !searchDue(ep.AirDate, ep.LastSearchedAt, time.Now()) {
+		// Release-gated escalating cadence (configurable in Settings).
+		if !searchDue(ep.AirDate, ep.LastSearchedAt, time.Now(), cad) {
 			continue
 		}
 		q := fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber)
@@ -130,21 +131,38 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 	return nil
 }
 
-// searchDue implements the release-aged search cadence: search hourly for the
-// first 48h after release, then daily for two weeks, then monthly. A never-
-// searched item (last == nil) is always due, so fresh requests search at once.
-func searchDue(releaseDate string, last *time.Time, now time.Time) bool {
+// cadence is the per-item, release-aged search schedule (from settings).
+type cadence struct {
+	fastWindow, fastInterval   time.Duration
+	dailyWindow, dailyInterval time.Duration
+	slowInterval               time.Duration
+}
+
+// cadenceFromSettings reads the configurable cadence (with built-in fallbacks).
+func (s *Service) cadenceFromSettings() cadence {
+	return cadence{
+		fastWindow: s.set.CadenceFastWindow(), fastInterval: s.set.CadenceFastInterval(),
+		dailyWindow: s.set.CadenceDailyWindow(), dailyInterval: s.set.CadenceDailyInterval(),
+		slowInterval: s.set.CadenceSlowInterval(),
+	}
+}
+
+// searchDue implements the release-aged search cadence: within fastWindow of the
+// release use fastInterval, within dailyWindow use dailyInterval, else
+// slowInterval. A never-searched item (last == nil) is always due, so fresh
+// requests search at once.
+func searchDue(releaseDate string, last *time.Time, now time.Time, cad cadence) bool {
 	if last == nil {
 		return true
 	}
-	interval := 30 * 24 * time.Hour // monthly (also the default when the date is unknown)
+	interval := cad.slowInterval
 	if releaseDate != "" {
 		if rd, err := time.Parse("2006-01-02", releaseDate); err == nil {
 			switch age := now.Sub(rd); {
-			case age < 48*time.Hour:
-				interval = time.Hour
-			case age < 14*24*time.Hour:
-				interval = 24 * time.Hour
+			case age < cad.fastWindow:
+				interval = cad.fastInterval
+			case age < cad.dailyWindow:
+				interval = cad.dailyInterval
 			}
 		}
 	}

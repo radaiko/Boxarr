@@ -12,8 +12,12 @@ func (w *Workers) autoSearchOnce(ctx context.Context) error {
 	if err := w.automation.AutoSearchWanted(ctx); err != nil {
 		return err
 	}
-	// Also look to upgrade already-imported items to a better language/quality.
-	return w.automation.UpgradeWanted(ctx)
+	// Also look to upgrade already-imported items to a better language/quality,
+	// unless the upgrade toggle is off.
+	if w.set.UpgradeEnabled() {
+		return w.automation.UpgradeWanted(ctx)
+	}
+	return nil
 }
 
 // metadataRefreshOnce runs one scheduled metadata refresh (FR-CAT-5), gated on

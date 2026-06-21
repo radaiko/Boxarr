@@ -117,6 +117,25 @@ func (s *Store) AutomationEnabled() bool {
 	return s.boolv(KeyAutomationEnabled, s.seed.AutomationEnabled)
 }
 
+// UpgradeEnabled gates the automatic language/quality upgrade search (default on).
+func (s *Store) UpgradeEnabled() bool { return s.boolv(KeyUpgradeEnabled, true) }
+
+// PlexAutoLanguageEnabled gates the periodic Plex audio/subtitle sweep (default on).
+func (s *Store) PlexAutoLanguageEnabled() bool { return s.boolv(KeyPlexAutoLanguage, true) }
+
+// ── Search cadence (per-item, keyed to release age) ──
+func (s *Store) CadenceFastWindow() time.Duration   { return s.dur(KeyCadenceFastWindow, 48*time.Hour) }
+func (s *Store) CadenceFastInterval() time.Duration { return s.dur(KeyCadenceFastInterval, time.Hour) }
+func (s *Store) CadenceDailyWindow() time.Duration {
+	return s.dur(KeyCadenceDailyWindow, 14*24*time.Hour)
+}
+func (s *Store) CadenceDailyInterval() time.Duration {
+	return s.dur(KeyCadenceDailyInterval, 24*time.Hour)
+}
+func (s *Store) CadenceSlowInterval() time.Duration {
+	return s.dur(KeyCadenceSlowInterval, 30*24*time.Hour)
+}
+
 // ── Categories (transitional) ──
 func (s *Store) Categories() []string { return s.seed.Categories }
 func (s *Store) AllowsCategory(cat string) bool {

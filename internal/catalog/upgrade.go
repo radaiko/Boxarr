@@ -62,7 +62,7 @@ func (s *Service) tryUpgradeMovie(ctx context.Context, m *media.Movie, now time.
 	}
 	cfg := s.set.SelectionConfigFor("movie")
 	ideal := idealLangs(cfg)
-	if languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) || !searchDue(m.ReleaseDate, m.LastSearchedAt, now) {
+	if languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) || !searchDue(m.ReleaseDate, m.LastSearchedAt, now, s.cadenceFromSettings()) {
 		return
 	}
 	if active, _ := s.store.ActiveJobForMedia(ctx, "movie", m.ID); active != nil {
@@ -89,7 +89,7 @@ func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *m
 	}
 	cfg := s.set.SelectionConfigFor(kind)
 	ideal := idealLangs(cfg)
-	if languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) || !searchDue(ep.AirDate, ep.LastSearchedAt, now) {
+	if languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) || !searchDue(ep.AirDate, ep.LastSearchedAt, now, s.cadenceFromSettings()) {
 		return
 	}
 	if active, _ := s.store.ActiveJobForMedia(ctx, "episode", ep.ID); active != nil {

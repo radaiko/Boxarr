@@ -125,7 +125,7 @@ func (w *Workers) Run(ctx context.Context) {
 		{"deleter", w.set.PollInterval(), w.deleteOnce},
 		{"reaper", 5 * time.Minute, w.reapOnce},
 		{"reconciler", w.set.ReconcileInterval(), w.reconcileOnce},
-		{"plex-language", w.set.SearchInterval(), w.plexLanguageOnce},
+		{"plex-language", w.set.SearchInterval(), w.plexLanguageLoop},
 	}
 	if w.set.HealEnabled() {
 		loops = append(loops,

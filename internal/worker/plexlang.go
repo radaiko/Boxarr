@@ -10,8 +10,17 @@ import (
 	"github.com/radaiko/boxarr/internal/plex"
 )
 
-// PlexLanguageSweep runs one Plex auto-language pass on demand (manual button).
+// PlexLanguageSweep runs one Plex auto-language pass on demand (manual button) —
+// it bypasses the auto-sweep toggle.
 func (w *Workers) PlexLanguageSweep(ctx context.Context) error { return w.plexLanguageOnce(ctx) }
+
+// plexLanguageLoop is the periodic sweep, gated on the auto-language toggle.
+func (w *Workers) plexLanguageLoop(ctx context.Context) error {
+	if !w.set.PlexAutoLanguageEnabled() {
+		return nil
+	}
+	return w.plexLanguageOnce(ctx)
+}
 
 // plexLanguageOnce sweeps the library and, per item, sets the default audio +
 // subtitle streams in Plex to satisfy the language rules (German preferred for

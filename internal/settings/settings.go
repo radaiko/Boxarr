@@ -56,9 +56,18 @@ const (
 	KeySearchInterval        = "interval.search"
 	KeyPollInterval          = "interval.poll"
 	KeyAutomationEnabled     = "automation.enabled"
-	KeyMaxActiveDownloads    = "limit.max_active"
-	KeyMaxCreatePerHour      = "limit.max_create_per_hour"
-	KeyMaxTorrentPerMin      = "limit.max_torrent_per_min"
+	KeyUpgradeEnabled        = "automation.upgrade_enabled" // auto language/quality upgrade
+	KeyPlexAutoLanguage      = "plex.auto_language"         // auto-set Plex audio/subtitle
+
+	// Search cadence (per-item, keyed to release age).
+	KeyCadenceFastWindow    = "search.cadence_fast_window"
+	KeyCadenceFastInterval  = "search.cadence_fast_interval"
+	KeyCadenceDailyWindow   = "search.cadence_daily_window"
+	KeyCadenceDailyInterval = "search.cadence_daily_interval"
+	KeyCadenceSlowInterval  = "search.cadence_slow_interval"
+	KeyMaxActiveDownloads   = "limit.max_active"
+	KeyMaxCreatePerHour     = "limit.max_create_per_hour"
+	KeyMaxTorrentPerMin     = "limit.max_torrent_per_min"
 )
 
 // Store is the live settings source.
