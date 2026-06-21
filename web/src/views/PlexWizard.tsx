@@ -5,6 +5,7 @@ import { Icon } from '../ui'
 interface Server { name: string; uri: string; uris: string[] }
 interface Section { key: string; title: string; type: string }
 interface Effective { 'plex.url'?: string; 'plex.movie_section'?: string; 'plex.tv_section'?: string; 'plex.anime_section'?: string }
+interface LibCheck { category: string; section: string; status: string; warnings: string[] }
 
 // PlexWizard: official Plex login (PIN OAuth) → pick a server → map libraries to
 // Movies / Series / Anime, saving each choice immediately. Falls back to the
@@ -19,6 +20,16 @@ export function PlexWizard({ effective, configured, onChange }: {
   const [url, setUrl] = useState(effective['plex.url'] ?? '')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  const [check, setCheck] = useState<LibCheck[] | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  async function runCheck() {
+    setChecking(true); setCheck(null)
+    try {
+      const r = await getJSON<{ results: LibCheck[] }>('/plex/library-check')
+      setCheck(r.results)
+    } catch (e) { setMsg('Library check failed — ' + String(e)) } finally { setChecking(false) }
+  }
 
   async function save(key: string, value: string) {
     await putJSON('/settings', { settings: { [key]: value } })
@@ -72,8 +83,36 @@ export function PlexWizard({ effective, configured, onChange }: {
             <Icon name="refresh" /> Load libraries
           </button>
         )}
+        {configured && (
+          <button className="btn btn-sm" onClick={() => void runCheck()} disabled={checking}>
+            <Icon name="check" /> {checking ? 'Checking…' : 'Check libraries'}
+          </button>
+        )}
         {msg && <span className="toast" style={{ fontSize: 12 }}>{msg}</span>}
       </div>
+
+      {check && (
+        <div className="lib-check">
+          {check.map((c) => (
+            <div key={c.category} className={`lib-check-row ${c.status}`}>
+              <span className="lib-check-head">
+                <span className={`status ${c.status === 'ok' ? 'available' : c.status === 'info' ? 'idle' : 'broken'}`}>
+                  {c.status === 'ok' ? 'OK' : c.status === 'info' ? 'info' : 'check'}
+                </span>
+                <b>{c.category}</b>
+                <span className="muted">{c.section}</span>
+              </span>
+              {c.warnings.length > 0 && (
+                <ul className="lib-check-warn">{c.warnings.map((wn, i) => <li key={i}>{wn}</li>)}</ul>
+              )}
+            </div>
+          ))}
+          <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+            For streamed TorBox media, keep intro/credits markers, voice activity, loudness analysis and
+            video preview thumbnails OFF — they pull whole files through the mount.
+          </p>
+        </div>
+      )}
 
       {servers && servers.length > 0 && (
         <div className="field">

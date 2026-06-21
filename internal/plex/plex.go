@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -53,6 +54,45 @@ func (c *Client) Sections(ctx context.Context) ([]Section, error) {
 		return nil, fmt.Errorf("decoding sections: %w", err)
 	}
 	return env.MediaContainer.Directory, nil
+}
+
+// Setting is one library preference (from /library/sections/{id}/prefs). Plex
+// returns value as a string, number, or bool depending on the pref, so it is
+// captured raw and interpreted via Truthy.
+type Setting struct {
+	ID    string          `json:"id"`
+	Label string          `json:"label"`
+	Value json.RawMessage `json:"value"`
+	Type  string          `json:"type"`
+}
+
+// Truthy reports whether the setting is enabled (non-zero / true).
+func (s Setting) Truthy() bool {
+	v := strings.Trim(string(s.Value), `"`)
+	switch v {
+	case "", "0", "false", "null":
+		return false
+	default:
+		return true
+	}
+}
+
+// SectionPrefs returns a library's preferences (used to detect expensive
+// per-library analysis like intro/credits markers and preview thumbnails).
+func (c *Client) SectionPrefs(ctx context.Context, sectionID string) ([]Setting, error) {
+	body, err := c.do(ctx, "/library/sections/"+sectionID+"/prefs")
+	if err != nil {
+		return nil, err
+	}
+	var env struct {
+		MediaContainer struct {
+			Setting []Setting `json:"Setting"`
+		} `json:"MediaContainer"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, fmt.Errorf("decoding prefs: %w", err)
+	}
+	return env.MediaContainer.Setting, nil
 }
 
 // ScanPath triggers a partial scan of one folder within a section. The path is

@@ -84,6 +84,7 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/plex/pin/{id}", h.plexPinCheck)
 	r.Get("/plex/servers", h.plexServers)
 	r.Get("/plex/sections", h.plexSections)
+	r.Get("/plex/library-check", h.plexLibraryCheck)
 	r.Get("/movies", h.listMovies)
 	r.Get("/movies/lookup", h.lookupMovies)
 	r.Get("/movies/{id}", h.getMovie)
