@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -130,6 +131,15 @@ func classifyRelease(name string) (kind, title string, season, episode int) {
 	default:
 		return "unknown", title, 0, 0
 	}
+}
+
+var titleNormRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// normTitle normalizes a title for fuzzy catalog matching: lowercased, with
+// punctuation stripped and whitespace collapsed — so a parsed release title like
+// "Avengers Endgame" matches the catalog's "Avengers: Endgame".
+func normTitle(s string) string {
+	return strings.TrimSpace(titleNormRe.ReplaceAllString(strings.ToLower(s), " "))
 }
 
 // refreshWebDAV triggers an out-of-band reconcile sweep (FR-WD-3) so the mount
@@ -296,9 +306,13 @@ func (h *Handler) adoptWebDAV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if item.Known {
-		// Already imported — no-op rather than re-running the importer.
-		h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "skipped": "already in library"})
-		return
+		// Skip only if it genuinely resolves to a catalog entry. An orphaned
+		// known item (job present, catalog row gone) should be re-adoptable.
+		_, title, _, _ := classifyRelease(item.Name)
+		if _, ok := h.catalogByTitle(ctx)[normTitle(title)]; ok {
+			h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "skipped": "already in library"})
+			return
+		}
 	}
 	kind := body.Kind
 	if kind == "" {
@@ -355,12 +369,17 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 		// For tracked items, trust the catalog's real type + poster over the
 		// filename guess — so a tracked anime shows under Anime, not Series.
 		if it.Known {
-			if c, ok := idx[strings.ToLower(dto.Title)]; ok {
+			if c, ok := idx[normTitle(dto.Title)]; ok {
 				dto.PosterPath = c.poster
 				dto.CatalogID = c.id
 				if c.kind != "" {
 					dto.Kind = c.kind
 				}
+			} else {
+				// Job-matched but no catalog entry (orphaned — e.g. the library
+				// item was deleted). Show it as unknown so the status is honest
+				// and it can be re-adopted, instead of a dead "tracked" link.
+				dto.Known = false
 			}
 		}
 		out = append(out, dto)
