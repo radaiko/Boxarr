@@ -51,7 +51,7 @@ func (w *Workers) importEpisodes(ctx context.Context, j *job.Job, sourceDir stri
 
 	root := sr.RootFolderPath
 	if root == "" {
-		root = w.cfg.TVLibraryRoot
+		root = w.set.TVLibraryRoot()
 	}
 	seriesFolder := movieFolderName(sr.Title, sr.Year) // "Title (Year)"
 

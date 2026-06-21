@@ -92,32 +92,9 @@ func TestLoadNewDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadRequiresSymlinkRoot(t *testing.T) {
-	baseEnv(t)
-	os.Unsetenv("BOXARR_SYMLINK_ROOT")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error when SYMLINK_ROOT is unset")
-	}
-	t.Setenv("BOXARR_SYMLINK_ROOT", "/nonexistent/symlink/root/xyz")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error for a missing symlink root directory")
-	}
-}
-
-func TestLoadRequiresLibraryRoots(t *testing.T) {
-	baseEnv(t)
-	t.Setenv("BOXARR_MOVIE_LIBRARY_ROOT", "/nonexistent/movies/xyz")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error for a missing movie library root")
-	}
-}
-
-func TestLoadMissingRequired(t *testing.T) {
-	os.Clearenv()
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error for missing required vars")
-	}
-}
+// Load no longer fails on missing connection vars or directories — they are
+// configured from the UI now (internal/settings). These boot-never-fails
+// guarantees are covered in the settings package tests.
 
 func TestEnabledPredicates(t *testing.T) {
 	if !(&Config{TorBoxWebDAVUser: "u", TorBoxWebDAVPass: "p"}).WebDAVRefreshEnabled() {
@@ -196,28 +173,6 @@ func TestHealConfigDefaults(t *testing.T) {
 	}
 	if c.HealBackoffInitial != 5*time.Minute {
 		t.Errorf("HealBackoffInitial default: %v", c.HealBackoffInitial)
-	}
-}
-
-func TestHealRequiresLibraryRootsWhenEnabled(t *testing.T) {
-	dir := baseEnv(t)
-	t.Setenv("BOXARR_HEAL_ENABLED", "true")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error: HEAL_ENABLED without HEAL_LIBRARY_ROOTS")
-	}
-	t.Setenv("BOXARR_HEAL_LIBRARY_ROOTS", dir)
-	if _, err := Load(); err != nil {
-		t.Fatalf("Load with valid heal config: %v", err)
-	}
-}
-
-func TestHealRejectsZeroMaxAttempts(t *testing.T) {
-	dir := baseEnv(t)
-	t.Setenv("BOXARR_HEAL_ENABLED", "true")
-	t.Setenv("BOXARR_HEAL_LIBRARY_ROOTS", dir)
-	t.Setenv("BOXARR_HEAL_MAX_ATTEMPTS", "0")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error: HEAL_MAX_ATTEMPTS=0 means nothing ever heals")
 	}
 }
 

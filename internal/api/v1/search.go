@@ -103,13 +103,13 @@ func (h *Handler) freeSearch(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, p prowlarr.SearchParams) {
 	ctx := r.Context()
-	results, err := h.deps.Prowlarr.Search(ctx, p)
+	results, err := h.deps.Settings.Prowlarr().Search(ctx, p)
 	if err != nil {
 		h.writeError(w, http.StatusBadGateway, "upstream_unavailable", "prowlarr: "+err.Error())
 		return
 	}
 	cached := h.cachedSet(ctx, results)
-	cfg := selection.FromConfig(h.deps.Cfg)
+	cfg := h.deps.Settings.SelectionConfig()
 
 	rels := make([]selection.Release, len(results))
 	parsedRes := make([]string, len(results))
@@ -154,10 +154,10 @@ func (h *Handler) cachedSet(ctx context.Context, results []prowlarr.ReleaseResou
 		}
 	}
 	out := map[string]bool{}
-	if len(hashes) == 0 || h.deps.TorBox == nil {
+	if len(hashes) == 0 || h.deps.Settings.TorBox() == nil {
 		return out
 	}
-	checks, err := h.deps.TorBox.CheckCached(ctx, hashes)
+	checks, err := h.deps.Settings.TorBox().CheckCached(ctx, hashes)
 	if err != nil {
 		h.deps.Logger.Warn("checkcached failed", "error", err)
 		return out

@@ -13,11 +13,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
-	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/job"
-	"github.com/radaiko/boxarr/internal/prowlarr"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
-	"github.com/radaiko/boxarr/internal/torbox"
 )
 
 // HealReporter exposes a worker loop's last/next run times (satisfied by worker.Workers).
@@ -28,9 +26,7 @@ type HealReporter interface {
 // Deps are the dependencies the /api/v1 handler needs.
 type Deps struct {
 	Store    *store.Store
-	Cfg      *config.Config
-	TorBox   *torbox.Client
-	Prowlarr *prowlarr.Client
+	Settings *settings.Store
 	Catalog  *catalog.Service
 	Health   HealReporter
 	Logger   *slog.Logger
@@ -85,7 +81,7 @@ func (h *Handler) Router() http.Handler {
 // client must present it.
 func (h *Handler) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := h.deps.Cfg.APIKey
+		key := h.deps.Settings.APIKey()
 		if key == "" {
 			if isLoopback(r.RemoteAddr) {
 				next.ServeHTTP(w, r)
@@ -137,7 +133,7 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 
 // account proxies the TorBox /user/me plan + usage.
 func (h *Handler) account(w http.ResponseWriter, r *http.Request) {
-	u, err := h.deps.TorBox.UserMe(r.Context())
+	u, err := h.deps.Settings.TorBox().UserMe(r.Context())
 	if err != nil {
 		h.deps.Logger.Warn("account: torbox /user/me failed", "error", err)
 		h.writeError(w, http.StatusBadGateway, "upstream_unavailable", "torbox: "+err.Error())
@@ -154,23 +150,11 @@ func (h *Handler) account(w http.ResponseWriter, r *http.Request) {
 
 // getSettings returns operator overrides + which secrets are configured.
 func (h *Handler) getSettings(w http.ResponseWriter, r *http.Request) {
-	all, err := h.deps.Store.AllSettings(r.Context())
-	if err != nil {
-		h.deps.Logger.Error("settings: load failed", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal", "loading settings")
-		return
-	}
-	c := h.deps.Cfg
+	s := h.deps.Settings
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"settings": all,
-		"configured": map[string]bool{
-			"torbox":   c.TorBoxAPIToken != "",
-			"prowlarr": c.ProwlarrAPIKey != "",
-			"tmdb":     c.TMDBAPIKey != "",
-			"tvdb":     c.TVDBEnabled(),
-			"plex":     c.PlexEnabled(),
-			"seerr":    c.SeerrEnabled(),
-		},
+		"settings":   s.Redacted(),
+		"effective":  s.EffectiveNonSecret(),
+		"configured": s.Configured(),
 	})
 }
 
@@ -184,7 +168,11 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for k, v := range body.Settings {
-		if err := h.deps.Store.SetSetting(r.Context(), k, v); err != nil {
+		if !settings.Writable(k) {
+			h.writeError(w, http.StatusBadRequest, "bad_request", "unknown setting key: "+k)
+			return
+		}
+		if err := h.deps.Settings.Set(r.Context(), k, v); err != nil {
 			h.deps.Logger.Error("settings: persist failed", "key", k, "error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal", "persisting settings")
 			return

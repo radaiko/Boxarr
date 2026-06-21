@@ -86,8 +86,8 @@ func (w *Workers) sweepSymlinkFarm(ctx context.Context) {
 	for _, p := range active {
 		activeSet[p] = true
 	}
-	for _, category := range w.cfg.Categories {
-		catDir := filepath.Join(w.cfg.SymlinkRoot, category)
+	for _, category := range w.set.Categories() {
+		catDir := filepath.Join(w.set.SymlinkRoot(), category)
 		entries, err := os.ReadDir(catDir)
 		if err != nil {
 			continue // category dir not created yet — nothing to sweep

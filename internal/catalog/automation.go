@@ -57,7 +57,7 @@ func (s *Service) RefreshMetadata(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		d, derr := s.tmdb.TVDetails(ctx, int(sr.TMDBID))
+		d, derr := s.set.TMDB().TVDetails(ctx, int(sr.TMDBID))
 		if derr != nil {
 			continue // transient; try again next cycle
 		}

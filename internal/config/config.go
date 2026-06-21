@@ -13,10 +13,10 @@ import (
 
 // Config holds all runtime configuration, populated from BOXARR_* env vars.
 type Config struct {
-	TorBoxAPIToken      string        `envconfig:"TORBOX_API_TOKEN" required:"true"`
-	WebDAVMountRoot     string        `envconfig:"WEBDAV_MOUNT_ROOT" required:"true"`
+	TorBoxAPIToken      string        `envconfig:"TORBOX_API_TOKEN"`
+	WebDAVMountRoot     string        `envconfig:"WEBDAV_MOUNT_ROOT"`
 	WebDAVUsenetSubpath string        `envconfig:"WEBDAV_USENET_SUBPATH"`
-	SymlinkRoot         string        `envconfig:"SYMLINK_ROOT" required:"true"` // transitional: reused worker depends on it; removed in Phase 1 (direct-to-library importer)
+	SymlinkRoot         string        `envconfig:"SYMLINK_ROOT"` // transitional: reused worker depends on it; removed in Phase 1 (direct-to-library importer)
 	ListenAddr          string        `envconfig:"LISTEN_ADDR" default:":8080"`
 	DatabasePath        string        `envconfig:"DATABASE_PATH" default:"/config/boxarr.db"`
 	PollInterval        time.Duration `envconfig:"POLL_INTERVAL" default:"1m"`
@@ -50,9 +50,9 @@ type Config struct {
 	WebDAVTorrentSubpath string `envconfig:"WEBDAV_TORRENT_SUBPATH"`
 
 	// ── Indexers / metadata / playback (NEW) ──
-	ProwlarrURL      string        `envconfig:"PROWLARR_URL" required:"true"`
-	ProwlarrAPIKey   string        `envconfig:"PROWLARR_API_KEY" required:"true"`
-	TMDBAPIKey       string        `envconfig:"TMDB_API_KEY" required:"true"`
+	ProwlarrURL      string        `envconfig:"PROWLARR_URL"`
+	ProwlarrAPIKey   string        `envconfig:"PROWLARR_API_KEY"`
+	TMDBAPIKey       string        `envconfig:"TMDB_API_KEY"`
 	TVDBAPIKey       string        `envconfig:"TVDB_API_KEY"`
 	TVDBPin          string        `envconfig:"TVDB_PIN"`
 	PlexURL          string        `envconfig:"PLEX_URL"`
@@ -114,50 +114,13 @@ type Config struct {
 	SearchConcurrency  int `envconfig:"SEARCH_CONCURRENCY" default:"3"`
 }
 
-// Load reads configuration from the environment and validates it.
+// Load reads the env/default seed. It never fails on missing connection vars or
+// directories — those are configured from the UI and persisted in the settings
+// table (see internal/settings). Env remains an optional seed/override.
 func Load() (*Config, error) {
 	var c Config
 	if err := envconfig.Process("boxarr", &c); err != nil {
 		return nil, fmt.Errorf("processing env config: %w", err)
-	}
-	if err := c.validateMount(); err != nil {
-		return nil, err
-	}
-	symInfo, err := os.Stat(c.SymlinkRoot)
-	if err != nil {
-		return nil, fmt.Errorf("symlink root %q: %w", c.SymlinkRoot, err)
-	}
-	if !symInfo.IsDir() {
-		return nil, fmt.Errorf("symlink root %q is not a directory", c.SymlinkRoot)
-	}
-	for _, lr := range []struct{ name, path string }{
-		{"movie library root", c.MovieLibraryRoot},
-		{"tv library root", c.TVLibraryRoot},
-	} {
-		info, err := os.Stat(lr.path)
-		if err != nil {
-			return nil, fmt.Errorf("%s %q: %w", lr.name, lr.path, err)
-		}
-		if !info.IsDir() {
-			return nil, fmt.Errorf("%s %q is not a directory", lr.name, lr.path)
-		}
-	}
-	if c.HealEnabled {
-		if len(c.HealLibraryRoots) == 0 {
-			return nil, fmt.Errorf("HEAL_ENABLED requires HEAL_LIBRARY_ROOTS")
-		}
-		for _, root := range c.HealLibraryRoots {
-			info, err := os.Stat(root)
-			if err != nil {
-				return nil, fmt.Errorf("heal library root %q: %w", root, err)
-			}
-			if !info.IsDir() {
-				return nil, fmt.Errorf("heal library root %q is not a directory", root)
-			}
-		}
-		if c.HealMaxAttempts <= 0 {
-			return nil, fmt.Errorf("HEAL_MAX_ATTEMPTS must be greater than 0")
-		}
 	}
 	return &c, nil
 }

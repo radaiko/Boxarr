@@ -12,8 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
-	"github.com/radaiko/boxarr/internal/config"
-	"github.com/radaiko/boxarr/internal/metadata/tmdb"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 )
 
@@ -30,11 +29,10 @@ const (
 
 // Deps are the dependencies the emulation needs.
 type Deps struct {
-	Store   *store.Store
-	Cfg     *config.Config
-	Catalog *catalog.Service
-	TMDB    *tmdb.Client
-	Logger  *slog.Logger
+	Store    *store.Store
+	Settings *settings.Store
+	Catalog  *catalog.Service
+	Logger   *slog.Logger
 }
 
 // Handler serves one Servarr-flavored surface.
@@ -105,7 +103,7 @@ func (h *Handler) auth(next http.Handler) http.Handler {
 
 func (h *Handler) keyMatches(got string) bool {
 	matched := false
-	for _, k := range h.deps.Cfg.SeerrAPIKeys {
+	for _, k := range h.deps.Settings.SeerrAPIKeys() {
 		if k != "" && subtle.ConstantTimeCompare([]byte(got), []byte(k)) == 1 {
 			matched = true // no early return: don't leak which/how-many keys
 		}
@@ -159,9 +157,9 @@ func (h *Handler) rootFolders(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(out) == 0 {
 		// Fall back to the configured library root so the dropdown still populates.
-		path := h.deps.Cfg.TVLibraryRoot
+		path := h.deps.Settings.TVLibraryRoot()
 		if h.kind == KindRadarr {
-			path = h.deps.Cfg.MovieLibraryRoot
+			path = h.deps.Settings.MovieLibraryRoot()
 		}
 		out = append(out, rootFolderShape(1, path))
 	}

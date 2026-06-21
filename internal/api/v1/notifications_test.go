@@ -24,7 +24,7 @@ func TestNotificationsListAndRead(t *testing.T) {
 	_, _ = st.EnqueueNotification(ctx, &notify.Notification{Type: "grab_failed", Payload: `{"error":"stalled"}`})
 	_, _ = st.EnqueueNotification(ctx, &notify.Notification{Type: "download_completed", Payload: `{"title":"X"}`})
 
-	h := NewHandler(Deps{Store: st, Cfg: &config.Config{},
+	h := NewHandler(Deps{Store: st, Settings: mkSettings(t, st, &config.Config{}),
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}).Router()
 
 	// List with unread badge.

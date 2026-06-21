@@ -7,12 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/radaiko/boxarr/internal/config"
-	"github.com/radaiko/boxarr/internal/store"
-	"github.com/radaiko/boxarr/internal/torbox"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/webdav"
 )
 
@@ -22,17 +20,16 @@ func TestStorageAndWebDAV(t *testing.T) {
 	}))
 	defer torboxSrv.Close()
 
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "st.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := mkStore(t)
 	ctx := context.Background()
+	set := mkSettings(t, st, &config.Config{})
+	_ = set.Set(ctx, settings.KeyTorBoxToken, "tok")
+	_ = set.Set(ctx, settings.KeyTorBoxBaseURL, torboxSrv.URL)
 	_ = st.UpsertWebDAVItem(ctx, &webdav.WebDAVItem{Name: "M", RemotePath: "/mnt/x", Size: 1000, Category: "movie", Known: true})
 	_ = st.UpsertWebDAVItem(ctx, &webdav.WebDAVItem{Name: "U", RemotePath: "/mnt/y", Size: 500, Category: "unknown"})
 
 	h := NewHandler(Deps{
-		Store: st, Cfg: &config.Config{}, TorBox: torbox.NewWithBaseURL("tok", torboxSrv.URL),
+		Store: st, Settings: set,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}).Router()
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
@@ -76,7 +77,8 @@ func TestEndToEndSubmitPollCompleteDelete(t *testing.T) {
 	}
 	tb := torbox.NewWithBaseURL("tok", srv.URL+"/v1/api")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	w := New(st, tb, cfg, logger)
+	set, _ := settings.New(context.Background(), st, cfg)
+	w := New(st, tb, set, logger)
 	ctx := context.Background()
 
 	// 1. Submit.

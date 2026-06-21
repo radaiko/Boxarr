@@ -45,7 +45,7 @@ func (w *Workers) importMovie(ctx context.Context, j *job.Job, sourceDir string)
 	}
 	root := m.RootFolderPath
 	if root == "" {
-		root = w.cfg.MovieLibraryRoot
+		root = w.set.MovieLibraryRoot()
 	}
 	folder := movieFolderName(m.Title, m.Year)
 	dir := filepath.Join(root, folder)
@@ -87,12 +87,12 @@ func (w *Workers) importMovie(ctx context.Context, j *job.Job, sourceDir string)
 // maybePlexScan triggers a best-effort Plex partial scan of dir if Plex is wired
 // and the relevant section id is configured.
 func (w *Workers) maybePlexScan(ctx context.Context, dir, kind string) {
-	if w.plex == nil {
+	if w.plex == nil || !w.set.PlexEnabled() {
 		return
 	}
-	section := w.cfg.PlexMovieSection
+	section := w.set.PlexMovieSection()
 	if kind == "tv" {
-		section = w.cfg.PlexTVSection
+		section = w.set.PlexTVSection()
 	}
 	if section == "" {
 		return

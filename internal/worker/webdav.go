@@ -20,24 +20,24 @@ var webdavRefreshBackoff = 15 * time.Minute
 // transfers are in progress. It is further debounced by the configured
 // cooldown and backs off hard on an HTTP 429.
 func (w *Workers) maybeRefreshWebDAV(ctx context.Context) {
-	if !w.cfg.WebDAVRefreshEnabled() {
+	if !w.set.WebDAVRefreshEnabled() {
 		return
 	}
 	now := time.Now()
 	if now.Before(w.webdavBackoffUntil) {
 		return
 	}
-	if !w.lastWebDAVRefresh.IsZero() && now.Sub(w.lastWebDAVRefresh) < w.cfg.WebDAVRefreshCooldown {
+	if !w.lastWebDAVRefresh.IsZero() && now.Sub(w.lastWebDAVRefresh) < w.set.WebDAVRefreshCooldown() {
 		return
 	}
 	w.lastWebDAVRefresh = now
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.cfg.TorBoxWebDAVRefreshURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.set.TorBoxWebDAVRefreshURL(), nil)
 	if err != nil {
 		w.logger.Error("building webdav refresh request", "error", err)
 		return
 	}
-	req.SetBasicAuth(w.cfg.TorBoxWebDAVUser, w.cfg.TorBoxWebDAVPass)
+	req.SetBasicAuth(w.set.TorBoxWebDAVUser(), w.set.TorBoxWebDAVPass())
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {

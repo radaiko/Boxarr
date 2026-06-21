@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
@@ -41,7 +41,7 @@ type Automation interface {
 type Workers struct {
 	store  *store.Store
 	tb     TorBoxAPI
-	cfg    *config.Config
+	set    *settings.Store
 	logger *slog.Logger
 
 	// missingPolls counts, per TorBox ID, how many consecutive polls a job
@@ -79,11 +79,11 @@ type Workers struct {
 }
 
 // New constructs a Workers.
-func New(st *store.Store, tb TorBoxAPI, cfg *config.Config, logger *slog.Logger) *Workers {
+func New(st *store.Store, tb TorBoxAPI, set *settings.Store, logger *slog.Logger) *Workers {
 	return &Workers{
 		store:               st,
 		tb:                  tb,
-		cfg:                 cfg,
+		set:                 set,
 		logger:              logger,
 		missingPolls:        map[int64]int{},
 		torrentMissingPolls: map[int64]int{},
@@ -109,24 +109,24 @@ type loopSpec struct {
 // Run starts every background loop and blocks until ctx is cancelled.
 func (w *Workers) Run(ctx context.Context) {
 	loops := []loopSpec{
-		{"submitter", w.cfg.PollInterval, w.submitOnce},
-		{"poller", w.cfg.PollInterval, w.pollOnce},
-		{"torrent-submitter", w.cfg.PollInterval, w.submitTorrentsOnce},
-		{"torrent-poller", w.cfg.PollInterval, w.pollTorrentsOnce},
-		{"deleter", w.cfg.PollInterval, w.deleteOnce},
+		{"submitter", w.set.PollInterval(), w.submitOnce},
+		{"poller", w.set.PollInterval(), w.pollOnce},
+		{"torrent-submitter", w.set.PollInterval(), w.submitTorrentsOnce},
+		{"torrent-poller", w.set.PollInterval(), w.pollTorrentsOnce},
+		{"deleter", w.set.PollInterval(), w.deleteOnce},
 		{"reaper", 5 * time.Minute, w.reapOnce},
-		{"reconciler", w.cfg.ReconcileInterval, w.reconcileOnce},
+		{"reconciler", w.set.ReconcileInterval(), w.reconcileOnce},
 	}
-	if w.cfg.HealEnabled {
+	if w.set.HealEnabled() {
 		loops = append(loops,
-			loopSpec{"healer", w.cfg.HealInterval, w.healOnce},
-			loopSpec{"heal-reconciler", w.cfg.PollInterval, w.healReconcileOnce},
+			loopSpec{"healer", w.set.HealInterval(), w.healOnce},
+			loopSpec{"heal-reconciler", w.set.PollInterval(), w.healReconcileOnce},
 		)
 	}
 	if w.automation != nil {
 		loops = append(loops,
-			loopSpec{"metadata-refresh", w.cfg.MetadataInterval, w.metadataRefreshOnce},
-			loopSpec{"auto-search", w.cfg.SearchInterval, w.autoSearchOnce},
+			loopSpec{"metadata-refresh", w.set.MetadataInterval(), w.metadataRefreshOnce},
+			loopSpec{"auto-search", w.set.SearchInterval(), w.autoSearchOnce},
 		)
 	}
 	var wg sync.WaitGroup
@@ -148,7 +148,7 @@ func (w *Workers) HealRunInfo() (last, next time.Time) {
 		return time.Time{}, time.Time{}
 	}
 	last = time.Unix(0, n)
-	return last, last.Add(w.cfg.HealInterval)
+	return last, last.Add(w.set.HealInterval())
 }
 
 // loop runs fn immediately, then every interval, until ctx is cancelled.
