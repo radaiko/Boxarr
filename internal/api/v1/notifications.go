@@ -30,7 +30,7 @@ func (h *Handler) listNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 	notes, err := h.deps.Store.ListNotifications(ctx, unreadOnly, limit)
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, "internal", "listing notifications")
+		h.serverError(w, "listing notifications", err)
 		return
 	}
 	unread, _ := h.deps.Store.UnreadCount(ctx)
@@ -55,7 +55,7 @@ func (h *Handler) listNotifications(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) unreadCount(w http.ResponseWriter, r *http.Request) {
 	n, err := h.deps.Store.UnreadCount(r.Context())
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, "internal", "counting unread")
+		h.serverError(w, "counting unread", err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"unreadCount": n})

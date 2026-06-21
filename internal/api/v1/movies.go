@@ -49,7 +49,7 @@ func toMovieDTO(m *media.Movie) movieDTO {
 func (h *Handler) listMovies(w http.ResponseWriter, r *http.Request) {
 	movies, err := h.deps.Store.ListMovies(r.Context())
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, "internal", "listing movies")
+		h.serverError(w, "listing movies", err)
 		return
 	}
 	items := make([]movieDTO, 0, len(movies))

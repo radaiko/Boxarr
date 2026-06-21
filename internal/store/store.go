@@ -40,6 +40,16 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := checkDirWritable(dir); err != nil {
 		return nil, err
 	}
+	// If the DB already exists, it must be writable by this process. A common
+	// deploy footgun: an earlier run (e.g. as root, before fixing volume perms)
+	// created boxarr.db/-wal/-shm owned by another uid; the dir is now writable
+	// but the files are not, so SQLite opens yet every read/write fails with an
+	// opaque I/O error at request time. Fail fast at startup with a fix instead.
+	for _, f := range []string{path, path + "-wal", path + "-shm"} {
+		if err := checkFileWritable(f); err != nil {
+			return nil, err
+		}
+	}
 	dsn := fmt.Sprintf(
 		"file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_txlock=immediate",
 		path)
@@ -78,6 +88,27 @@ func checkDirWritable(dir string) error {
 		}
 	}
 	return fmt.Errorf("database directory %q is not writable%s: %w", dir, hint, err)
+}
+
+// checkFileWritable verifies an existing file can be opened read-write, with an
+// actionable error (owner vs process uid) when it cannot. Missing files are OK —
+// SQLite creates them. Used to catch a DB left owned by a different user.
+func checkFileWritable(path string) error {
+	info, serr := os.Stat(path)
+	if serr != nil {
+		return nil // doesn't exist yet — SQLite will create it in the (writable) dir
+	}
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err == nil {
+		_ = f.Close()
+		return nil
+	}
+	hint := ""
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		hint = fmt.Sprintf(" — it is owned by uid %d:gid %d but this process runs as uid %d:gid %d; run `chown -R %d:%d <config dir>` (or delete %s* on a fresh install)",
+			st.Uid, st.Gid, os.Getuid(), os.Getgid(), os.Getuid(), os.Getgid(), filepath.Base(path))
+	}
+	return fmt.Errorf("database file %q is not writable%s: %w", path, hint, err)
 }
 
 // migrate applies embedded goose migrations.

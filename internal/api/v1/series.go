@@ -81,7 +81,7 @@ func seriesRollup(seasons []seasonDTO) string {
 func (h *Handler) listSeries(w http.ResponseWriter, r *http.Request) {
 	all, err := h.deps.Store.ListSeries(r.Context())
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, "internal", "listing series")
+		h.serverError(w, "listing series", err)
 		return
 	}
 	ctx := r.Context()

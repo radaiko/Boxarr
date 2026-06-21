@@ -208,6 +208,13 @@ func (h *Handler) writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// serverError logs the underlying cause (so 500s are diagnosable from the
+// container logs) and returns a generic 500 to the client.
+func (h *Handler) serverError(w http.ResponseWriter, msg string, err error) {
+	h.deps.Logger.Error(msg, "error", err)
+	h.writeError(w, http.StatusInternalServerError, "internal", msg)
+}
+
 func (h *Handler) writeError(w http.ResponseWriter, status int, code, msg string) {
 	h.writeJSON(w, status, map[string]any{
 		"error": map[string]string{"code": code, "message": msg},

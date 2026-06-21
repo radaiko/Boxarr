@@ -89,7 +89,7 @@ func (h *Handler) refreshWebDAV(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 	items, err := h.deps.Store.ListWebDAVItems(r.Context())
 	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, "internal", "listing webdav items")
+		h.serverError(w, "listing webdav items", err)
 		return
 	}
 	cat := r.URL.Query().Get("category")
