@@ -74,7 +74,10 @@ func (c *Client) CreateUsenetDownload(ctx context.Context, req CreateRequest) (*
 			return nil, fmt.Errorf("writing nzb content: %w", err)
 		}
 	}
-	if req.Link != "" {
+	// TorBox rejects a request that has both a file and a link ("Both link and
+	// file provided"). Prefer the uploaded NZB file; only fall back to the link
+	// when we have no file content.
+	if req.Link != "" && len(req.NZBContent) == 0 {
 		_ = mw.WriteField("link", req.Link)
 	}
 	if req.NZBName != "" {

@@ -50,6 +50,46 @@ func TestCreateUsenetDownload(t *testing.T) {
 	}
 }
 
+// When both an NZB file and a link are provided, only the file must be sent —
+// TorBox 400s on "Both link and file provided".
+func TestCreateUsenetDownloadFilePreferredOverLink(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(1 << 20)
+		if _, _, err := r.FormFile("file"); err != nil {
+			t.Errorf("expected file part: %v", err)
+		}
+		if links := r.MultipartForm.Value["link"]; len(links) > 0 {
+			t.Errorf("link must not be sent when file is present, got %v", links)
+		}
+		w.Write([]byte(`{"success":true,"data":{"usenetdownload_id":"1","hash":"h","auth_id":"a"}}`))
+	}))
+	defer srv.Close()
+	c := NewWithBaseURL("tok", srv.URL+"/v1/api")
+	if _, err := c.CreateUsenetDownload(context.Background(), CreateRequest{
+		NZBContent: []byte("<nzb/>"), NZBName: "rel", Link: "https://indexer/nzb",
+	}); err != nil {
+		t.Fatalf("CreateUsenetDownload: %v", err)
+	}
+}
+
+// With no file content, the link is sent.
+func TestCreateUsenetDownloadLinkOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(1 << 20)
+		if links := r.MultipartForm.Value["link"]; len(links) != 1 || links[0] != "https://x/nzb" {
+			t.Errorf("expected link sent, got %v", r.MultipartForm.Value["link"])
+		}
+		w.Write([]byte(`{"success":true,"data":{"usenetdownload_id":"1","hash":"h","auth_id":"a"}}`))
+	}))
+	defer srv.Close()
+	c := NewWithBaseURL("tok", srv.URL+"/v1/api")
+	if _, err := c.CreateUsenetDownload(context.Background(), CreateRequest{
+		NZBName: "rel", Link: "https://x/nzb",
+	}); err != nil {
+		t.Fatalf("CreateUsenetDownload: %v", err)
+	}
+}
+
 func TestListUsenet(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"success":true,"data":[{"id":1,"name":"A"},{"id":2,"name":"B"}]}`))
