@@ -103,6 +103,7 @@ export function WebDAV() {
   const trackedSel = selItems.filter((it) => it.known).length
   const allIds = items.map((it) => it.id)
   const allSelected = items.length > 0 && selected.size === items.length
+  const unknownIds = items.filter((it) => !it.known && !deleting.has(it.id)).map((it) => it.id)
 
   return (
     <section>
@@ -116,9 +117,16 @@ export function WebDAV() {
             {deleting.size > 0 && <> · <span className="test-bad">{deleting.size} deleting…</span></>}
           </span>
         </label>
-        <button className="btn" onClick={() => void refresh()} disabled={busy}>
-          <Icon name="refresh" /> {busy ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <span style={{ display: 'flex', gap: 8 }}>
+          {unknownIds.length > 0 && (
+            <button className="btn btn-sm" onClick={() => sel.toggleMany(unknownIds, true)}>
+              <Icon name="check" /> Select unknown ({unknownIds.length})
+            </button>
+          )}
+          <button className="btn" onClick={() => void refresh()} disabled={busy}>
+            <Icon name="refresh" /> {busy ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </span>
       </div>
 
       {selItems.length > 0 && (
