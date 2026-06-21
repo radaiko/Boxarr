@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -134,7 +137,11 @@ func (h *Handler) notificationAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "delete":
+		// Delete via the TorBox API when the download is in a mylist, AND remove
+		// the folder from the WebDAV mount so it doesn't reappear on the next
+		// reconcile (covers content present on the mount but not in mylist).
 		h.deleteUnknownFromTorBox(ctx, p.Name)
+		h.removeMountFolder(p.RemotePath)
 		if err := h.deps.Store.DeleteWebDAVItemByPath(ctx, p.RemotePath); err != nil {
 			h.writeError(w, http.StatusInternalServerError, "internal", "removing item")
 			return
@@ -147,29 +154,55 @@ func (h *Handler) notificationAction(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, map[string]any{"id": id, "action": body.Action, "ok": true})
 }
 
-// deleteUnknownFromTorBox best-effort deletes a download (matched by folder name)
-// from TorBox, checking torrents then usenet.
-func (h *Handler) deleteUnknownFromTorBox(ctx context.Context, name string) {
+// deleteUnknownFromTorBox best-effort deletes a download from TorBox by matching
+// its folder name (case-insensitively) against the torrent then usenet mylists.
+// Returns whether a matching download was found and a delete issued.
+func (h *Handler) deleteUnknownFromTorBox(ctx context.Context, name string) bool {
 	tb := h.deps.Settings.TorBox()
-	if torrents, err := tb.ListTorrents(ctx); err == nil {
-		for _, d := range torrents {
-			if d.Name == name {
-				if derr := tb.ControlTorrent(ctx, int64(d.ID), "delete"); derr != nil {
-					h.deps.Logger.Warn("unknown-content delete (torrent)", "name", name, "error", derr)
-				}
-				return
+	torrents, terr := tb.ListTorrents(ctx)
+	for _, d := range torrents {
+		if strings.EqualFold(d.Name, name) {
+			if derr := tb.ControlTorrent(ctx, int64(d.ID), "delete"); derr != nil {
+				h.deps.Logger.Warn("unknown-content delete (torrent)", "name", name, "error", derr)
 			}
+			return true
 		}
 	}
-	if usenet, err := tb.ListUsenet(ctx); err == nil {
-		for _, d := range usenet {
-			if d.Name == name {
-				if derr := tb.ControlUsenet(ctx, int64(d.ID), "delete"); derr != nil {
-					h.deps.Logger.Warn("unknown-content delete (usenet)", "name", name, "error", derr)
-				}
-				return
+	usenet, uerr := tb.ListUsenet(ctx)
+	for _, d := range usenet {
+		if strings.EqualFold(d.Name, name) {
+			if derr := tb.ControlUsenet(ctx, int64(d.ID), "delete"); derr != nil {
+				h.deps.Logger.Warn("unknown-content delete (usenet)", "name", name, "error", derr)
 			}
+			return true
 		}
 	}
-	h.deps.Logger.Warn("unknown-content delete: no matching TorBox download", "name", name)
+	if terr != nil || uerr != nil {
+		h.deps.Logger.Warn("unknown-content delete: could not query TorBox mylists",
+			"name", name, "torrents_error", terr, "usenet_error", uerr)
+	} else {
+		// Expected for content TorBox already removed (stale rclone cache) or added
+		// outside Boxarr — the folder removal below still clears it.
+		h.deps.Logger.Info("unknown-content delete: not in a TorBox mylist; removing the mount folder instead", "name", name)
+	}
+	return false
+}
+
+// removeMountFolder deletes a release folder from the WebDAV mount (best-effort),
+// guarded so it can only touch paths inside the configured mount root. On the
+// rclone-backed mount this removes the content from TorBox's WebDAV.
+func (h *Handler) removeMountFolder(remotePath string) {
+	root := h.deps.Settings.WebDAVMountRoot()
+	if remotePath == "" || root == "" {
+		return
+	}
+	clean := filepath.Clean(remotePath)
+	rel, err := filepath.Rel(filepath.Clean(root), clean)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		h.deps.Logger.Warn("unknown-content delete: path outside mount root, refusing", "path", remotePath)
+		return
+	}
+	if err := os.RemoveAll(clean); err != nil {
+		h.deps.Logger.Warn("unknown-content delete: removing mount folder", "path", clean, "error", err)
+	}
 }
