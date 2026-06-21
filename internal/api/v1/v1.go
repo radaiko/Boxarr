@@ -40,6 +40,12 @@ type Deleter interface {
 	RemoveImport(ctx context.Context, jobID int64)
 }
 
+// SeriesConverter switches a series between standard and anime, relocating its
+// library files (satisfied by worker.Workers).
+type SeriesConverter interface {
+	ConvertSeriesType(ctx context.Context, seriesID int64, newType string) error
+}
+
 // Deps are the dependencies the /api/v1 handler needs.
 type Deps struct {
 	Store      *store.Store
@@ -49,6 +55,7 @@ type Deps struct {
 	Reconciler Reconciler
 	Adopter    Adopter
 	Deleter    Deleter
+	Converter  SeriesConverter
 	Logger     *slog.Logger
 	Version    string
 }
@@ -93,6 +100,7 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/series/{id}", h.getSeries)
 	r.Post("/series", h.addSeries)
 	r.Put("/series/{id}/monitored", h.setSeriesMonitored)
+	r.Put("/series/{id}/type", h.setSeriesType)
 	r.Put("/series/{id}/seasons/{season}/monitored", h.setSeasonMonitored)
 	r.Put("/series/{id}/episodes/{episodeId}/monitored", h.setEpisodeMonitored)
 	r.Delete("/series/{id}", h.deleteSeries)

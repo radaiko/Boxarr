@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getJSON, postJSON, del, posterURL, type Series, type Episode, type Release, type ListResponse } from '../api'
+import { getJSON, postJSON, putJSON, del, posterURL, type Series, type Episode, type Release, type ListResponse } from '../api'
 import { Icon, Status, Loading, initials, MetaChips } from '../ui'
 import { ReleaseTable } from './ReleaseTable'
 
@@ -37,6 +37,12 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
     setMsg('Grabbed — download queued on TorBox.'); setMsgOk(true); setReleases(null); setScope('')
   }
   async function remove() { await del(`/series/${id}`); onBack() }
+  async function convertType() {
+    const to = series?.seriesType === 'anime' ? 'standard' : 'anime'
+    setMsg(`Moving to ${to === 'anime' ? 'anime' : 'series'} library…`); setMsgOk(false)
+    try { await putJSON(`/series/${id}/type`, { seriesType: to }); reload(); setMsg(`Moved to ${to === 'anime' ? 'anime' : 'series'}.`); setMsgOk(true) }
+    catch (e) { setMsg(String(e)) }
+  }
 
   if (!series) return <Loading />
 
@@ -55,7 +61,12 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
             <Status value={series.status} />
           </div>
           {series.overview && <p className="overview">{series.overview}</p>}
-          <button className="btn btn-danger" onClick={() => void remove()}><Icon name="trash" /> Delete series</button>
+          <div className="topbar-actions" style={{ justifyContent: 'flex-start' }}>
+            <button className="btn" onClick={() => void convertType()}>
+              <Icon name="anime" /> {series.seriesType === 'anime' ? 'Move to series' : 'Move to anime'}
+            </button>
+            <button className="btn btn-danger" onClick={() => void remove()}><Icon name="trash" /> Delete series</button>
+          </div>
           {msg && <p className={`toast${msgOk ? ' ok' : ''}`} style={{ marginTop: 12 }}>{msg}</p>}
         </div>
       </div>

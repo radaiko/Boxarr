@@ -212,6 +212,32 @@ func (h *Handler) setSeriesMonitored(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, map[string]any{"id": id, "monitored": body.Monitored})
 }
 
+// setSeriesType converts a series between "standard" and "anime", relocating its
+// library files to the matching library root.
+func (h *Handler) setSeriesType(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.idParam(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		SeriesType string `json:"seriesType"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
+		(body.SeriesType != "anime" && body.SeriesType != "standard") {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "seriesType must be 'anime' or 'standard'")
+		return
+	}
+	if h.deps.Converter == nil {
+		h.writeError(w, http.StatusServiceUnavailable, "unavailable", "converter not wired")
+		return
+	}
+	if err := h.deps.Converter.ConvertSeriesType(r.Context(), id, body.SeriesType); err != nil {
+		h.serverError(w, "converting series type", err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"id": id, "seriesType": body.SeriesType})
+}
+
 // setSeasonMonitored toggles a season's monitored flag and cascades it to the
 // season's episodes (re-deriving wanted/missing for aired, file-less ones).
 func (h *Handler) setSeasonMonitored(w http.ResponseWriter, r *http.Request) {
