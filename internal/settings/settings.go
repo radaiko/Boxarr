@@ -38,7 +38,9 @@ const (
 	KeyPlexToken             = "plex.token"
 	KeyPlexMovieSection      = "plex.movie_section"
 	KeyPlexTVSection         = "plex.tv_section"
-	KeyPlexClientID          = "plex.client_id" // stable per-install id for plex.tv OAuth
+	KeyPlexClientID          = "plex.client_id"        // stable per-install id for plex.tv OAuth
+	KeyTorBoxCooldownUntil   = "torbox.cooldown_until" // persisted submit pause (RFC3339)
+	KeyTorBoxDailyCap        = "torbox.daily_cap"      // learned grabs/day ceiling (0 = none)
 	KeySeerrAPIKeys          = "seerr.api_keys"
 	KeyAPIKey                = "api.key"
 	KeyMovieLibraryRoot      = "library.movie_root"

@@ -25,8 +25,22 @@ func (s *Store) PlexMovieSection() string { return s.str(KeyPlexMovieSection, s.
 func (s *Store) PlexTVSection() string    { return s.str(KeyPlexTVSection, s.seed.PlexTVSection) }
 func (s *Store) PlexAnimeSection() string { return s.str(KeyPlexAnimeSection, s.seed.PlexAnimeSection) }
 func (s *Store) PlexClientID() string     { return s.str(KeyPlexClientID, "") }
-func (s *Store) SeerrAPIKeys() []string   { return s.csv(KeySeerrAPIKeys, s.seed.SeerrAPIKeys) }
-func (s *Store) APIKey() string           { return s.str(KeyAPIKey, s.seed.APIKey) }
+
+// TorBox learned-limit state (persisted so it survives restarts).
+func (s *Store) TorBoxDailyCap() int { return s.intv(KeyTorBoxDailyCap, 0) }
+func (s *Store) TorBoxCooldownUntil() time.Time {
+	v := s.str(KeyTorBoxCooldownUntil, "")
+	if v == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+func (s *Store) SeerrAPIKeys() []string { return s.csv(KeySeerrAPIKeys, s.seed.SeerrAPIKeys) }
+func (s *Store) APIKey() string         { return s.str(KeyAPIKey, s.seed.APIKey) }
 
 // Base-URL overrides (empty = the client's production default). Used by the
 // connection-test endpoints and mirror/self-host setups.

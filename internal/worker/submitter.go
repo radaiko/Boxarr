@@ -2,12 +2,36 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
+
+// startOfDayUTC is midnight UTC today — the window for the learned daily-grab cap.
+func startOfDayUTC() time.Time {
+	t := time.Now().UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// persistRateLimit remembers a TorBox throttle: it stores the cooldown (so it
+// survives restarts), records the event, and lowers the learned daily-grab cap to
+// the number of grabs that triggered the limit.
+func (w *Workers) persistRateLimit(ctx context.Context, cooldown time.Duration) {
+	until := time.Now().Add(cooldown)
+	_ = w.set.Set(ctx, settings.KeyTorBoxCooldownUntil, until.UTC().Format(time.RFC3339))
+	today, _ := w.store.CountJobsSubmittedSince(ctx, startOfDayUTC())
+	detail := fmt.Sprintf("rate-limited after %d grabs today; cooldown %s", today, cooldown.Round(time.Second))
+	if cur := w.set.TorBoxDailyCap(); today > 0 && (cur == 0 || int(today) < cur) {
+		_ = w.set.Set(ctx, settings.KeyTorBoxDailyCap, strconv.Itoa(int(today)))
+		detail += fmt.Sprintf("; learned daily cap = %d", today)
+	}
+	_ = w.store.RecordLimitEvent(ctx, "rate_limit", detail)
+}
 
 // defaultRateLimitCooldown is how long the submitter pauses after a TorBox
 // 429 that carried no Retry-After hint. TorBox caps NZB creation at 60/hour,
@@ -18,6 +42,16 @@ const defaultRateLimitCooldown = 5 * time.Minute
 func (w *Workers) submitOnce(ctx context.Context) error {
 	if now := time.Now(); now.Before(w.submitBackoffUntil) {
 		return nil // still cooling down from a TorBox rate-limit
+	}
+	// Respect a persisted cooldown (survives restarts) and the learned daily cap.
+	if cu := w.set.TorBoxCooldownUntil(); !cu.IsZero() && time.Now().Before(cu) {
+		return nil
+	}
+	if cap := w.set.TorBoxDailyCap(); cap > 0 {
+		if today, _ := w.store.CountJobsSubmittedSince(ctx, startOfDayUTC()); int(today) >= cap {
+			w.submitBackoffUntil = startOfDayUTC().Add(24 * time.Hour) // resume tomorrow
+			return nil
+		}
 	}
 	jobs, err := w.store.JobsByState(ctx, job.StatePending)
 	if err != nil {
@@ -93,6 +127,7 @@ func (w *Workers) submitJob(ctx context.Context, j *job.Job) time.Duration {
 			if uerr := w.store.UpdateJob(ctx, j); uerr != nil {
 				log.Error("reverting rate-limited job to pending", "error", uerr)
 			}
+			w.persistRateLimit(ctx, cooldown) // remember cooldown + learn the daily cap
 			log.Warn("torbox rate-limited submission; pausing submitter",
 				"error", err, "cooldown", cooldown.String())
 			return cooldown

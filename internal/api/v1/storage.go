@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/release"
+	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/task"
 	"github.com/radaiko/boxarr/internal/webdav"
 )
@@ -28,10 +30,28 @@ func (h *Handler) storage(w http.ResponseWriter, r *http.Request) {
 		job.StateSubmitting, job.StateQueued, job.StateDownloading, job.StateSeeding)
 
 	byCat, _ := h.deps.Store.WebDAVUsageByCategory(ctx)
+	// Learned limits: what Boxarr inferred + remembers from TorBox throttling.
+	now := time.Now().UTC()
+	startToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	usedToday, _ := h.deps.Store.CountJobsSubmittedSince(ctx, startToday)
+	events, _ := h.deps.Store.ListLimitEvents(ctx, 50)
+	if events == nil {
+		events = []store.LimitEvent{}
+	}
+	cooldown := ""
+	if cu := h.deps.Settings.TorBoxCooldownUntil(); !cu.IsZero() {
+		cooldown = cu.UTC().Format(time.RFC3339)
+	}
 	resp := map[string]any{
 		"usedBytes":  used,
 		"byCategory": byCat,
 		"downloads":  map[string]any{"active": active},
+		"limits": map[string]any{
+			"dailyCap":      h.deps.Settings.TorBoxDailyCap(),
+			"usedToday":     usedToday,
+			"cooldownUntil": cooldown,
+			"events":        events,
+		},
 	}
 	if h.deps.Settings.TorBox() != nil {
 		if u, err := h.deps.Settings.TorBox().UserMe(ctx); err == nil {

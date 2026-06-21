@@ -380,6 +380,59 @@ func (s *Store) ListImportedSymlinks(ctx context.Context) ([]*job.ImportedSymlin
 	return out, rows.Err()
 }
 
+// CountJobsSubmittedSince counts jobs submitted to TorBox at/after t (for the
+// learned daily-grab budget).
+func (s *Store) CountJobsSubmittedSince(ctx context.Context, t time.Time) (int64, error) {
+	var n int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM jobs WHERE submitted_at IS NOT NULL AND submitted_at >= ?`, t).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("counting submitted jobs: %w", err)
+	}
+	return n, nil
+}
+
+// LimitEvent is an observed TorBox limit signal (rate-limit/cooldown/cap).
+type LimitEvent struct {
+	ID        int64     `json:"id"`
+	Kind      string    `json:"kind"`
+	Detail    string    `json:"detail"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// RecordLimitEvent appends an observed limit signal (trimmed to the last 200).
+func (s *Store) RecordLimitEvent(ctx context.Context, kind, detail string) error {
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO limit_event (kind, detail) VALUES (?, ?)`, kind, detail); err != nil {
+		return fmt.Errorf("recording limit event: %w", err)
+	}
+	_, _ = s.db.ExecContext(ctx,
+		`DELETE FROM limit_event WHERE id NOT IN (SELECT id FROM limit_event ORDER BY id DESC LIMIT 200)`)
+	return nil
+}
+
+// ListLimitEvents returns the most recent limit signals, newest first.
+func (s *Store) ListLimitEvents(ctx context.Context, limit int) ([]LimitEvent, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, kind, detail, created_at FROM limit_event ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("listing limit events: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []LimitEvent
+	for rows.Next() {
+		var e LimitEvent
+		if err := rows.Scan(&e.ID, &e.Kind, &e.Detail, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // ListImportedSymlinksByJob returns just one job's symlinks (avoids scanning the
 // whole table per job during bulk rollback/delete).
 func (s *Store) ListImportedSymlinksByJob(ctx context.Context, jobID int64) ([]*job.ImportedSymlink, error) {

@@ -31,6 +31,7 @@ var writableKeys = map[string]bool{
 	KeySearchInterval: true, KeyPollInterval: true, KeyAutomationEnabled: true,
 	KeyMaxActiveDownloads: true, KeyMaxCreatePerHour: true, KeyMaxTorrentPerMin: true,
 	KeyTorBoxBaseURL: true, KeyTMDBBaseURL: true, KeyTVDBBaseURL: true,
+	KeyTorBoxDailyCap: true, KeyTorBoxCooldownUntil: true,
 }
 
 func init() {
