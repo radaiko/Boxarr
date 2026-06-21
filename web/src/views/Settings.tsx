@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getJSON, putJSON, postJSON, setApiKey, getApiKey } from '../api'
 import { Icon, Loading, ErrorBanner, initials } from '../ui'
+import { PlexWizard } from './PlexWizard'
 
 interface SettingsResponse {
   settings: Record<string, string> // DB overlay (secrets masked as ********)
@@ -211,6 +212,10 @@ export function Settings() {
             <span className={`status ${svcStatus ? 'available' : 'idle'}`}>{svcStatus ? 'connected' : 'not set'}</span>
           )}
         </div>
+        {g.title === 'Plex' && (
+          <PlexWizard effective={data!.effective} configured={!!data!.configured.plex} onChange={reload} />
+        )}
+        {g.title === 'Plex' && <p className="hint-line">Or enter the server details manually:</p>}
         {g.fields.map((f) => (
           <div key={f.key} className={f.bool ? 'field field-row' : 'field'}>
             {f.bool ? (

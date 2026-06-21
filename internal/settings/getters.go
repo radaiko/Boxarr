@@ -24,6 +24,7 @@ func (s *Store) PlexToken() string        { return s.str(KeyPlexToken, s.seed.Pl
 func (s *Store) PlexMovieSection() string { return s.str(KeyPlexMovieSection, s.seed.PlexMovieSection) }
 func (s *Store) PlexTVSection() string    { return s.str(KeyPlexTVSection, s.seed.PlexTVSection) }
 func (s *Store) PlexAnimeSection() string { return s.str(KeyPlexAnimeSection, s.seed.PlexAnimeSection) }
+func (s *Store) PlexClientID() string     { return s.str(KeyPlexClientID, "") }
 func (s *Store) SeerrAPIKeys() []string   { return s.csv(KeySeerrAPIKeys, s.seed.SeerrAPIKeys) }
 func (s *Store) APIKey() string           { return s.str(KeyAPIKey, s.seed.APIKey) }
 

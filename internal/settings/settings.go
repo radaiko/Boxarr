@@ -38,6 +38,7 @@ const (
 	KeyPlexToken             = "plex.token"
 	KeyPlexMovieSection      = "plex.movie_section"
 	KeyPlexTVSection         = "plex.tv_section"
+	KeyPlexClientID          = "plex.client_id" // stable per-install id for plex.tv OAuth
 	KeySeerrAPIKeys          = "seerr.api_keys"
 	KeyAPIKey                = "api.key"
 	KeyMovieLibraryRoot      = "library.movie_root"
