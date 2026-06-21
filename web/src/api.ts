@@ -1,9 +1,33 @@
 // Thin typed client over Boxarr's /api/v1 surface (04-internal-api.md).
 const base = '/api/v1'
 
+// When the instance has an API key set, the SPA stores it locally and sends it
+// on every request as X-Api-Key. Empty = open instance.
+const KEY_STORE = 'boxarr.apiKey'
+let apiKey = (typeof localStorage !== 'undefined' && localStorage.getItem(KEY_STORE)) || ''
+
+export function setApiKey(k: string): void {
+  apiKey = k
+  if (typeof localStorage === 'undefined') return
+  if (k) localStorage.setItem(KEY_STORE, k)
+  else localStorage.removeItem(KEY_STORE)
+}
+export function getApiKey(): string { return apiKey }
+
+function headers(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { ...extra }
+  if (apiKey) h['X-Api-Key'] = apiKey
+  return h
+}
+
+function fail(method: string, path: string, status: number): Error {
+  if (status === 401) return new Error(`unauthorized (${status}) — set the correct API key in Settings`)
+  return new Error(`${method} ${path}: ${status}`)
+}
+
 export async function getJSON<T>(path: string): Promise<T> {
-  const r = await fetch(base + path)
-  if (!r.ok) throw new Error(`GET ${path}: ${r.status}`)
+  const r = await fetch(base + path, { headers: headers() })
+  if (!r.ok) throw fail('GET', path, r.status)
   return (await r.json()) as T
 }
 
@@ -16,17 +40,17 @@ export async function postJSON<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function del(path: string): Promise<void> {
-  const r = await fetch(base + path, { method: 'DELETE' })
-  if (!r.ok) throw new Error(`DELETE ${path}: ${r.status}`)
+  const r = await fetch(base + path, { method: 'DELETE', headers: headers() })
+  if (!r.ok) throw fail('DELETE', path, r.status)
 }
 
 async function sendJSON<T>(method: string, path: string, body: unknown): Promise<T> {
   const r = await fetch(base + path, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   })
-  if (!r.ok) throw new Error(`${method} ${path}: ${r.status}`)
+  if (!r.ok) throw fail(method, path, r.status)
   return (await r.json()) as T
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getJSON, putJSON, postJSON } from '../api'
+import { getJSON, putJSON, postJSON, setApiKey } from '../api'
 import { Icon, Loading, ErrorBanner } from '../ui'
 
 interface SettingsResponse {
@@ -141,6 +141,9 @@ export function Settings() {
   async function save() {
     setMsg('Saving…')
     try {
+      // If the UI API key changed, persist it locally first so the very next
+      // request (the reload below) authenticates instead of locking us out.
+      if ('api.key' in edits) setApiKey(edits['api.key'])
       const updated = await putJSON<SettingsResponse>('/settings', { settings: edits })
       setData(updated)
       setEdits({})

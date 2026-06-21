@@ -8,7 +8,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"log/slog"
-	"net"
 	"net/http"
 	"time"
 
@@ -95,18 +94,16 @@ func (h *Handler) Router() http.Handler {
 	return r
 }
 
-// auth enforces the X-Api-Key. When no key is configured, loopback requests are
-// allowed unauthenticated (single-operator local-first); once a key is set, every
-// client must present it.
+// auth gates /api/v1. When no API key is configured the instance is open — this
+// is the just-installed state and keeps the SPA usable over the LAN. Once a key
+// is set every request must present it via X-Api-Key (the SPA stores the key and
+// sends it). Set a key (and/or front Boxarr with a reverse proxy) before exposing
+// it beyond a trusted network.
 func (h *Handler) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := h.deps.Settings.APIKey()
 		if key == "" {
-			if isLoopback(r.RemoteAddr) {
-				next.ServeHTTP(w, r)
-				return
-			}
-			h.writeError(w, http.StatusUnauthorized, "unauthorized", "api key required for non-loopback clients")
+			next.ServeHTTP(w, r)
 			return
 		}
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Api-Key")), []byte(key)) != 1 {
@@ -115,15 +112,6 @@ func (h *Handler) auth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func isLoopback(remoteAddr string) bool {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // status reports version, worker run times, and catalog/job counts.

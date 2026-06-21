@@ -71,25 +71,25 @@ func req(t *testing.T, h http.Handler, method, path, key, remote, body string) *
 	return rec
 }
 
-func TestAuthLoopbackBypassAndRejection(t *testing.T) {
-	h, _ := newV1(t, "", "") // no key configured
+func TestAuthOpenWhenNoKey(t *testing.T) {
+	h, _ := newV1(t, "", "") // no key configured → open instance (works over LAN)
 	if rec := req(t, h, http.MethodGet, "/status", "", "127.0.0.1:5555", ""); rec.Code != http.StatusOK {
 		t.Errorf("loopback w/o key should be 200, got %d", rec.Code)
 	}
-	if rec := req(t, h, http.MethodGet, "/status", "", "192.0.2.7:5555", ""); rec.Code != http.StatusUnauthorized {
-		t.Errorf("non-loopback w/o key should be 401, got %d", rec.Code)
+	if rec := req(t, h, http.MethodGet, "/status", "", "192.0.2.7:5555", ""); rec.Code != http.StatusOK {
+		t.Errorf("LAN client w/o key should be 200 (open instance), got %d", rec.Code)
 	}
 }
 
 func TestAuthRequiresKeyWhenSet(t *testing.T) {
 	h, _ := newV1(t, "secret", "")
-	if rec := req(t, h, http.MethodGet, "/status", "", "127.0.0.1:5555", ""); rec.Code != http.StatusUnauthorized {
-		t.Errorf("loopback must still need the key once set, got %d", rec.Code)
+	if rec := req(t, h, http.MethodGet, "/status", "", "10.0.0.9:5555", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("no key presented should be 401 once a key is set, got %d", rec.Code)
 	}
-	if rec := req(t, h, http.MethodGet, "/status", "wrong", "127.0.0.1:5555", ""); rec.Code != http.StatusUnauthorized {
+	if rec := req(t, h, http.MethodGet, "/status", "wrong", "10.0.0.9:5555", ""); rec.Code != http.StatusUnauthorized {
 		t.Errorf("wrong key should be 401, got %d", rec.Code)
 	}
-	if rec := req(t, h, http.MethodGet, "/status", "secret", "192.0.2.7:5555", ""); rec.Code != http.StatusOK {
+	if rec := req(t, h, http.MethodGet, "/status", "secret", "10.0.0.9:5555", ""); rec.Code != http.StatusOK {
 		t.Errorf("correct key should be 200, got %d", rec.Code)
 	}
 }
