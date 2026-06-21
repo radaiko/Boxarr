@@ -67,7 +67,7 @@ func (w *Workers) importEpisodes(ctx context.Context, j *job.Job, sourceDir stri
 			log.Warn("no episode match for file; left unimported", "file", filepath.Base(video))
 			continue
 		}
-		linkPath := w.tvLinkPath(root, seriesFolder, sr.Title, targets[0], filepath.Ext(video))
+		linkPath := w.tvLinkPath(root, seriesFolder, sr.Title, targets, filepath.Ext(video))
 		if err := os.MkdirAll(filepath.Dir(linkPath), 0o755); err != nil {
 			return fmt.Errorf("creating season dir: %w", err)
 		}
@@ -115,36 +115,69 @@ func (w *Workers) importEpisodes(ctx context.Context, j *job.Job, sourceDir stri
 
 // tvLinkPath builds the Plex-standard episode path:
 // <root>/<Series (Year)>/Season NN/<Series> - S01E02[-E03] - <Title>.ext
-func (w *Workers) tvLinkPath(root, seriesFolder, seriesTitle string, ep *media.Episode, ext string) string {
-	seasonDir := fmt.Sprintf("Season %02d", ep.SeasonNumber)
-	tag := fmt.Sprintf("S%02dE%02d", ep.SeasonNumber, ep.EpisodeNumber)
+// eps is the (ordered) set of catalog episodes the file covers; a multi-episode
+// file gets an SxxEyy-Ezz range tag so Plex recognizes every episode.
+func (w *Workers) tvLinkPath(root, seriesFolder, seriesTitle string, eps []*media.Episode, ext string) string {
+	first := eps[0]
+	last := eps[len(eps)-1]
+	seasonDir := fmt.Sprintf("Season %02d", first.SeasonNumber)
+	tag := fmt.Sprintf("S%02dE%02d", first.SeasonNumber, first.EpisodeNumber)
+	if last.SeasonNumber == first.SeasonNumber && last.EpisodeNumber > first.EpisodeNumber {
+		tag += fmt.Sprintf("-E%02d", last.EpisodeNumber)
+	}
 	name := fmt.Sprintf("%s - %s", sanitizePathComponent(seriesTitle), tag)
-	if ep.Title != "" {
-		name += " - " + sanitizePathComponent(ep.Title)
+	if first.Title != "" {
+		name += " - " + sanitizePathComponent(first.Title)
 	}
 	return filepath.Join(root, seriesFolder, seasonDir, name+strings.ToLower(ext))
 }
 
-// matchEpisodes maps a parsed file to catalog episodes: a single episode, a
-// range/adjacent multi-episode (EpisodeStart..EpisodeEnd), or (for a season
-// pack with no per-file episode) nothing here — pack files always carry SxxEyy.
+// matchEpisodes maps a parsed file to catalog episodes. It tries, in order:
+// standard S/E numbering (incl. multi-episode ranges), anime absolute numbering,
+// then daily/date-based air-date matching — so anime and daily shows aren't
+// silently dropped (a season-pack file with none of these carries no episode).
 func matchEpisodes(p *release.ParsedRelease, episodes []*media.Episode) []*media.Episode {
-	if p.EpisodeStart == 0 {
-		return nil
+	// 1. Standard SxxEyy (and adjacent multi-episode ranges).
+	if p.EpisodeStart > 0 {
+		end := p.EpisodeEnd
+		if end < p.EpisodeStart {
+			end = p.EpisodeStart
+		}
+		var out []*media.Episode
+		for n := p.EpisodeStart; n <= end; n++ {
+			for _, ep := range episodes {
+				if ep.SeasonNumber == p.SeasonNumber && ep.EpisodeNumber == n {
+					out = append(out, ep)
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
 	}
-	end := p.EpisodeEnd
-	if end < p.EpisodeStart {
-		end = p.EpisodeStart
+	// 2. Anime absolute numbering.
+	if len(p.AbsoluteEpisodes) > 0 {
+		var out []*media.Episode
+		for _, abs := range p.AbsoluteEpisodes {
+			for _, ep := range episodes {
+				if ep.AbsoluteNumber > 0 && ep.AbsoluteNumber == abs {
+					out = append(out, ep)
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
 	}
-	var out []*media.Episode
-	for n := p.EpisodeStart; n <= end; n++ {
+	// 3. Daily / date-based shows.
+	if p.AirDate != "" {
 		for _, ep := range episodes {
-			if ep.SeasonNumber == p.SeasonNumber && ep.EpisodeNumber == n {
-				out = append(out, ep)
+			if ep.AirDate != "" && ep.AirDate == p.AirDate {
+				return []*media.Episode{ep}
 			}
 		}
 	}
-	return out
+	return nil
 }
 
 // allVideos returns every video file under dir (recursively), sorted by path.

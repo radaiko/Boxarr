@@ -150,7 +150,17 @@ var illegalPathChars = strings.NewReplacer(
 	"/", " ", `\`, " ", ":", " ", "*", " ", "?", " ", `"`, " ", "<", " ", ">", " ", "|", " ")
 
 func sanitizePathComponent(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f { // NUL/control chars → space (else Symlink/MkdirAll fail)
+			return ' '
+		}
+		return r
+	}, s)
 	s = illegalPathChars.Replace(s)
 	s = strings.Join(strings.Fields(s), " ") // collapse whitespace runs
-	return strings.TrimRight(strings.TrimSpace(s), ". ")
+	s = strings.TrimRight(strings.TrimSpace(s), ". ")
+	if s == "" { // empty/dot-only title would make a blank/hidden path component
+		return "untitled"
+	}
+	return s
 }

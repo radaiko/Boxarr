@@ -57,17 +57,21 @@ func (w *Workers) ConvertSeriesType(ctx context.Context, seriesID int64, newType
 					target = s.TargetPath
 				}
 			}
-			if target != "" {
-				if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
-					w.logger.Warn("convert: creating dir", "path", newPath, "error", err)
-					continue
-				}
-				if err := atomicReplaceSymlink(newPath, target); err != nil {
-					w.logger.Warn("convert: relinking", "path", newPath, "error", err)
-					continue
-				}
-				_ = removeLibrarySymlink(oldPath)
+			if target == "" {
+				// No link could be resolved — don't rewrite DB state to a path
+				// with no file behind it (would leave a dangling LibraryPath).
+				w.logger.Warn("convert: no symlink target; leaving episode unchanged", "path", oldPath, "episode_id", ep.ID)
+				continue
 			}
+			if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+				w.logger.Warn("convert: creating dir", "path", newPath, "error", err)
+				continue
+			}
+			if err := atomicReplaceSymlink(newPath, target); err != nil {
+				w.logger.Warn("convert: relinking", "path", newPath, "error", err)
+				continue
+			}
+			_ = removeLibrarySymlink(oldPath)
 			ep.LibraryPath = newPath
 			if err := w.store.UpdateEpisode(ctx, ep); err != nil {
 				w.logger.Warn("convert: updating episode", "id", ep.ID, "error", err)

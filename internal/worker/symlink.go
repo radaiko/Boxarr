@@ -6,7 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 )
+
+// symlinkTmpSeq makes atomicReplaceSymlink's temp name unique per call, so
+// concurrent importer/healer/convert goroutines never clobber each other's temp.
+var symlinkTmpSeq atomic.Int64
 
 // EnsureCategoryDirs creates <symlinkRoot>/<category>/ for every category, so
 // Sonarr/Radarr health checks see their drop zone before any download lands.
@@ -114,8 +119,14 @@ func classifyReleaseDir(dir string) (empty, allBroken bool, err error) {
 // linkPath absent: it creates a temp symlink and renames it over linkPath.
 // rename(2) is atomic on POSIX, so a process with the file open keeps reading.
 func atomicReplaceSymlink(linkPath, newTarget string) error {
-	tmp := linkPath + ".heal-tmp"
-	_ = os.Remove(tmp) // clear any stale temp link from a crashed run
+	// The target must be absolute: Plex resolves it from its own mount, and a
+	// relative link (e.g. if the WebDAV mount root was configured relative) would
+	// be unresolvable. filepath.Abs is a no-op for an already-absolute target.
+	if abs, err := filepath.Abs(newTarget); err == nil {
+		newTarget = abs
+	}
+	tmp := fmt.Sprintf("%s.tmp-%d", linkPath, symlinkTmpSeq.Add(1)) // unique per call
+	_ = os.Remove(tmp)                                              // clear any stale temp link from a crashed run
 	if err := os.Symlink(newTarget, tmp); err != nil {
 		return fmt.Errorf("creating temp symlink: %w", err)
 	}

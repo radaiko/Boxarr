@@ -223,6 +223,18 @@ func (w *Workers) discoverSymlinks(ctx context.Context) error {
 // re-records its new location. A symlink whose target is gone is flagged
 // broken for the heal pass.
 func (w *Workers) detectBrokenSymlinks(ctx context.Context) error {
+	// Mount-health gate: a dropped rclone FUSE mount makes ReadDir fail (ENOENT /
+	// EIO / "transport endpoint not connected"). If we can't read the mount root,
+	// every target would Stat-fail and the whole library would be flagged broken —
+	// a heal storm that re-submits everything to TorBox. Skip the pass instead.
+	// (A mount that is up but reporting content missing is caught by the >50%
+	// ratio guard in triggerHeals.)
+	if root := w.set.WebDAVMountRoot(); root != "" {
+		if _, derr := os.ReadDir(root); derr != nil {
+			w.logger.Warn("heal: WebDAV mount unreadable; skipping broken-symlink detection", "root", root, "error", derr)
+			return nil
+		}
+	}
 	syms, err := w.store.ListImportedSymlinks(ctx)
 	if err != nil {
 		return err
@@ -294,10 +306,20 @@ func (w *Workers) triggerHeals(ctx context.Context) error {
 		return err
 	}
 	brokenByJob := make(map[int64]int)
+	brokenTotal := 0
 	for _, sym := range syms {
 		if sym.IsBroken {
 			brokenByJob[sym.JobID]++
+			brokenTotal++
 		}
+	}
+	// Sanity guard: if more than half of all tracked symlinks are broken in one
+	// pass, that's almost certainly a mount/storage issue, not genuine content
+	// loss — refuse the mass re-submit rather than hammer TorBox.
+	if len(syms) >= 4 && brokenTotal*2 > len(syms) {
+		w.logger.Warn("heal: refusing mass-heal — >50% of symlinks broken at once (mount issue?)",
+			"broken", brokenTotal, "total", len(syms))
+		return nil
 	}
 	for jobID, count := range brokenByJob {
 		if ctx.Err() != nil {

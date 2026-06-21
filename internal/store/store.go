@@ -346,7 +346,7 @@ func (s *Store) UpsertImportedSymlink(ctx context.Context, sym *job.ImportedSyml
 		`INSERT INTO imported_symlinks (job_id, symlink_path, target_path)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(symlink_path) DO UPDATE SET
-		   job_id = excluded.job_id, target_path = excluded.target_path`,
+		   job_id = excluded.job_id, target_path = excluded.target_path, is_broken = 0`,
 		sym.JobID, sym.SymlinkPath, sym.TargetPath)
 	if err != nil {
 		return fmt.Errorf("upserting imported symlink: %w", err)
