@@ -288,6 +288,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .lib-check-head { display: flex; align-items: center; gap: 8px; }
 .lib-check-warn { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-faint); }
 .lib-check-warn li { margin: 2px 0; }
+.season-toggle { cursor: pointer; user-select: none; }
+.season-toggle:hover h3 { color: var(--accent); }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: #ffffff05; }
 .task-details-row td { padding-top: 0; }

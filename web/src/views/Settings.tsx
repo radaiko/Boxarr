@@ -269,6 +269,15 @@ export function Settings() {
   const dirty = Object.keys(edits).length > 0
   const active = TABS.find((t) => t.id === tab) ?? TABS[0]
 
+  async function runAction(path: string, what: string) {
+    try {
+      await postJSON(path, {})
+      setMsg(`${what} started — follow it on the Activity page.`)
+    } catch (e) {
+      setMsg(String(e))
+    }
+  }
+
   return (
     <section>
       <div className="tabs">
@@ -324,6 +333,16 @@ export function Settings() {
           <div className={tab === 'Connections' ? 'settings-stack' : 'settings-grid'}>
             {active.groups.map((title) => byTitle[title] && renderGroup(byTitle[title]))}
           </div>
+          {tab === 'Downloads' && (
+            <div className="field-row" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+              <button className="btn btn-sm" onClick={() => void runAction('/upgrade/search', 'Upgrade search')}>
+                <Icon name="refresh" /> Search for upgrades now
+              </button>
+              <button className="btn btn-sm" onClick={() => void runAction('/plex/language-sweep', 'Plex language update')}>
+                <Icon name="refresh" /> Update Plex languages now
+              </button>
+            </div>
+          )}
           <div className="save-bar">
             <button className="btn btn-primary" onClick={() => void save()} disabled={!dirty}>
               <Icon name="check" /> Save changes

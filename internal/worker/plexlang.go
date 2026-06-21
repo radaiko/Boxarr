@@ -10,6 +10,9 @@ import (
 	"github.com/radaiko/boxarr/internal/plex"
 )
 
+// PlexLanguageSweep runs one Plex auto-language pass on demand (manual button).
+func (w *Workers) PlexLanguageSweep(ctx context.Context) error { return w.plexLanguageOnce(ctx) }
+
 // plexLanguageOnce sweeps the library and, per item, sets the default audio +
 // subtitle streams in Plex to satisfy the language rules (German preferred for
 // movies/series; German or English for anime, with subtitle fallback). When the
@@ -127,7 +130,12 @@ func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey, label 
 		w.logger.Debug("plex language: streams", "item", label, "error", err)
 		return
 	}
-	wantA, wantS, missing := plex.PickStreams(kind, audio, subs)
+	cfg := w.set.SelectionConfigFor(kind)
+	preferred := cfg.PreferredLanguages
+	if len(preferred) == 0 {
+		preferred = cfg.RequiredLanguages
+	}
+	wantA, wantS, missing := plex.PickStreams(preferred, cfg.RequireAnyLanguage, audio, subs)
 	if missing {
 		w.notifyLanguageMissing(ctx, label)
 	}

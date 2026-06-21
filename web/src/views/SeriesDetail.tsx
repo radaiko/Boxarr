@@ -12,6 +12,9 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
   const [searchBusy, setSearchBusy] = useState(false)
   const [searchCurrent, setSearchCurrent] = useState<string | undefined>()
   const [msg, setMsg] = useState('')
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+  const toggleSeason = (n: number) =>
+    setCollapsed((c) => { const x = new Set(c); x.has(n) ? x.delete(n) : x.add(n); return x })
   const [msgOk, setMsgOk] = useState(false)
 
   function reload() {
@@ -83,13 +86,17 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
 
       {series.seasons?.map((s) => (
         <div key={s.seasonNumber}>
-          <div className="season-head">
+          <div className="season-head season-toggle" onClick={() => toggleSeason(s.seasonNumber)}>
+            <span className="muted" style={{ width: 14 }}>{collapsed.has(s.seasonNumber) ? '▸' : '▾'}</span>
             <h3>Season {s.seasonNumber}</h3>
             <Status value={s.status} />
-            <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void searchSeason(s.seasonNumber)}>
+            <span className="muted" style={{ fontSize: 12 }}>{s.episodes?.length ?? 0} eps</span>
+            <button className="btn btn-sm" style={{ marginLeft: 'auto' }}
+              onClick={(e) => { e.stopPropagation(); void searchSeason(s.seasonNumber) }}>
               <Icon name="search" /> Search season
             </button>
           </div>
+          {!collapsed.has(s.seasonNumber) && (
           <div className="table-wrap">
             <table className="tbl">
               <tbody>
@@ -116,6 +123,7 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
               </tbody>
             </table>
           </div>
+          )}
         </div>
       ))}
     </section>

@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/radaiko/boxarr/internal/media"
@@ -59,7 +60,9 @@ func (s *Service) tryUpgradeMovie(ctx context.Context, m *media.Movie, now time.
 	if err != nil || cur == nil {
 		return
 	}
-	if languageSatisfied("movie", cur.NZBName) || !searchDue(m.ReleaseDate, m.LastSearchedAt, now) {
+	cfg := s.set.SelectionConfigFor("movie")
+	ideal := idealLangs(cfg)
+	if languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) || !searchDue(m.ReleaseDate, m.LastSearchedAt, now) {
 		return
 	}
 	if active, _ := s.store.ActiveJobForMedia(ctx, "movie", m.ID); active != nil {
@@ -74,8 +77,7 @@ func (s *Service) tryUpgradeMovie(ctx context.Context, m *media.Movie, now time.
 	if err != nil {
 		return
 	}
-	cfg := s.set.SelectionConfigFor("movie")
-	if best, ok := s.pickBest(results, "movie"); ok && s.isUpgrade(cfg, "movie", cur.NZBName, best.Title) {
+	if best, ok := s.pickBest(results, "movie"); ok && s.isUpgrade(cfg, ideal, cur.NZBName, best.Title) {
 		_, _ = s.grabBest(ctx, best, "movie", m.ID, true)
 	}
 }
@@ -85,7 +87,9 @@ func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *m
 	if err != nil || cur == nil {
 		return
 	}
-	if languageSatisfied(kind, cur.NZBName) || !searchDue(ep.AirDate, ep.LastSearchedAt, now) {
+	cfg := s.set.SelectionConfigFor(kind)
+	ideal := idealLangs(cfg)
+	if languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) || !searchDue(ep.AirDate, ep.LastSearchedAt, now) {
 		return
 	}
 	if active, _ := s.store.ActiveJobForMedia(ctx, "episode", ep.ID); active != nil {
@@ -97,34 +101,55 @@ func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *m
 	if err != nil {
 		return
 	}
-	cfg := s.set.SelectionConfigFor(kind)
-	if best, ok := s.pickBest(results, kind); ok && s.isUpgrade(cfg, kind, cur.NZBName, best.Title) {
+	if best, ok := s.pickBest(results, kind); ok && s.isUpgrade(cfg, ideal, cur.NZBName, best.Title) {
 		_, _ = s.grabBest(ctx, best, "episode", ep.ID, true)
 	}
+}
+
+// idealLangs is the language goal for a type from settings: the preferred
+// languages, or the required ones when no preferred list is set.
+func idealLangs(cfg selection.Config) []string {
+	if len(cfg.PreferredLanguages) > 0 {
+		return cfg.PreferredLanguages
+	}
+	return cfg.RequiredLanguages
 }
 
 // isUpgrade reports whether candidate is a worthwhile replacement for current:
 // it must reach the ideal language (which current lacks) and score strictly
 // higher, so we never churn one acceptable release for an equivalent one.
-func (s *Service) isUpgrade(cfg selection.Config, kind, current, candidate string) bool {
-	if !languageSatisfied(kind, candidate) {
+func (s *Service) isUpgrade(cfg selection.Config, ideal []string, current, candidate string) bool {
+	if !languageSatisfied(candidate, ideal, cfg.RequireAnyLanguage) {
 		return false
 	}
 	return cfg.Score(selection.Release{Title: candidate}) > cfg.Score(selection.Release{Title: current})
 }
 
-// languageSatisfied reports whether a release already carries the ideal language
-// for its type. Movies/series want German (the upgrade target). For anime, German
-// and English are equivalent per the language rules, so anime never triggers a
-// language upgrade (subtitle handling is Plex's job, not a re-grab).
-func languageSatisfied(kind, name string) bool {
-	if kind == "anime" {
+// languageSatisfied reports whether a release already carries the configured ideal
+// language. With requireAny (e.g. anime: German OR English), any preferred
+// language counts; otherwise the top preferred language is the target (so an
+// English movie is not satisfied when German is preferred first). No preferred
+// languages configured → always satisfied (nothing to upgrade toward).
+func languageSatisfied(name string, ideal []string, requireAny bool) bool {
+	if len(ideal) == 0 {
 		return true
 	}
-	for _, l := range release.DetectLanguages(name) {
-		if l == "DE" {
-			return true
+	langs := release.DetectLanguages(name)
+	has := func(code string) bool {
+		for _, l := range langs {
+			if strings.EqualFold(l, code) {
+				return true
+			}
 		}
+		return false
 	}
-	return false
+	if requireAny {
+		for _, code := range ideal {
+			if has(code) {
+				return true
+			}
+		}
+		return false
+	}
+	return has(ideal[0])
 }

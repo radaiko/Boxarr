@@ -48,6 +48,11 @@ type SeriesConverter interface {
 	ConvertSeriesType(ctx context.Context, seriesID int64, newType string) error
 }
 
+// PlexLanguager runs the Plex auto-language sweep on demand.
+type PlexLanguager interface {
+	PlexLanguageSweep(ctx context.Context) error
+}
+
 // Deps are the dependencies the /api/v1 handler needs.
 type Deps struct {
 	Store      *store.Store
@@ -58,6 +63,7 @@ type Deps struct {
 	Adopter    Adopter
 	Deleter    Deleter
 	Converter  SeriesConverter
+	PlexLang   PlexLanguager // runs the Plex auto-language sweep on demand (optional)
 	Tasks      *task.Manager // background runner for adopt/delete (nil = run inline)
 	Logger     *slog.Logger
 	Version    string
@@ -85,6 +91,8 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/plex/servers", h.plexServers)
 	r.Get("/plex/sections", h.plexSections)
 	r.Get("/plex/library-check", h.plexLibraryCheck)
+	r.Post("/plex/language-sweep", h.triggerPlexLanguage)
+	r.Post("/upgrade/search", h.triggerUpgradeSearch)
 	r.Get("/movies", h.listMovies)
 	r.Get("/movies/lookup", h.lookupMovies)
 	r.Get("/movies/{id}", h.getMovie)
