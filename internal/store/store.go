@@ -328,6 +328,21 @@ func (s *Store) ActiveJobForMedia(ctx context.Context, mediaType string, mediaRe
 		mediaType, mediaRef)
 }
 
+// JobAheadForMedia reports whether another job (not exceptID) for the same media
+// is already in flight or imported — i.e. exceptID is a redundant duplicate that
+// shouldn't be submitted/downloaded again.
+func (s *Store) JobAheadForMedia(ctx context.Context, exceptID int64, mediaType string, mediaRef int64) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM jobs WHERE media_type=? AND media_ref=? AND id!=? AND state IN
+		 ('submitting','queued','downloading','seeding','completed','imported','healing')`,
+		mediaType, mediaRef, exceptID).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("checking duplicate jobs: %w", err)
+	}
+	return n > 0, nil
+}
+
 func (s *Store) findOne(ctx context.Context, where string, args ...any) (*job.Job, error) {
 	j, err := scanJob(s.db.QueryRowContext(ctx,
 		`SELECT `+jobColumns+` FROM jobs WHERE `+where+` ORDER BY id DESC LIMIT 1`, args...))

@@ -33,6 +33,29 @@ func (w *Workers) persistRateLimit(ctx context.Context, cooldown time.Duration) 
 	_ = w.store.RecordLimitEvent(ctx, "rate_limit", detail)
 }
 
+// redundantPendingReason returns a non-empty reason when a pending job should be
+// retired instead of submitted: its media is already imported, or another job for
+// the same media is already in flight/imported (a duplicate grab).
+func (w *Workers) redundantPendingReason(ctx context.Context, j *job.Job) string {
+	if j.MediaRef == 0 {
+		return ""
+	}
+	switch j.MediaType {
+	case "movie":
+		if m, err := w.store.GetMovie(ctx, j.MediaRef); err == nil && m.HasFile {
+			return "movie already imported"
+		}
+	case "episode":
+		if ep, err := w.store.GetEpisode(ctx, j.MediaRef); err == nil && ep.HasFile {
+			return "episode already imported"
+		}
+	}
+	if ahead, _ := w.store.JobAheadForMedia(ctx, j.ID, j.MediaType, j.MediaRef); ahead {
+		return "duplicate of another active job"
+	}
+	return ""
+}
+
 // defaultRateLimitCooldown is how long the submitter pauses after a TorBox
 // 429 that carried no Retry-After hint. TorBox caps NZB creation at 60/hour,
 // so a short pause is enough to stop hammering a closed window.
@@ -63,6 +86,18 @@ func (w *Workers) submitOnce(ctx context.Context) error {
 		}
 		if j.Protocol == "torrent" {
 			continue // torrent jobs are driven by the torrent submitter (added in a later increment)
+		}
+		if reason := w.redundantPendingReason(ctx, j); reason != "" {
+			// Don't re-download something already imported / handled by another
+			// job; retire the duplicate so it leaves the queue.
+			j.State = job.StateManuallyResolved
+			j.FailMessage = "superseded: " + reason
+			if uerr := w.store.UpdateJob(ctx, j); uerr != nil {
+				w.logger.Error("retiring superseded job", "job_id", j.ID, "error", uerr)
+			} else {
+				w.logger.Info("retired superseded pending job", "job_id", j.ID, "reason", reason)
+			}
+			continue
 		}
 		if cooldown := w.submitJob(ctx, j); cooldown > 0 {
 			// TorBox is throttling: the job is back in `pending` and the
