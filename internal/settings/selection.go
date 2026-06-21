@@ -32,6 +32,18 @@ const (
 	KeySelectWeightPreferredKeyword        = "select.weight_preferred_keyword"
 	KeySelectWeightFreeleech               = "select.weight_freeleech"
 	KeySelectWeightProper                  = "select.weight_proper"
+
+	// Per-type language rules.
+	KeySelectMovieLangRequired   = "select.movie_lang_required"
+	KeySelectMovieLangPreferred  = "select.movie_lang_preferred"
+	KeySelectSeriesLangRequired  = "select.series_lang_required"
+	KeySelectSeriesLangPreferred = "select.series_lang_preferred"
+	KeySelectAnimeLangRequired   = "select.anime_lang_required"
+	KeySelectAnimeLangPreferred  = "select.anime_lang_preferred"
+	KeySelectAnimeRequireAny     = "select.anime_require_any"
+	KeySelectAnimePreferSubs     = "select.anime_prefer_subs"
+	KeySelectWeightLanguage      = "select.weight_language"
+	KeySelectWeightSubs          = "select.weight_subs"
 )
 
 // selectionKeys is every selection key, used to register them as writable and to
@@ -45,6 +57,11 @@ var selectionKeys = []string{
 	KeySelectWeightProtocolUsenet, KeySelectWeightProtocolUncachedTorrent, KeySelectWeightHealth,
 	KeySelectSeedSaturation, KeySelectWeightPreferredGroup, KeySelectWeightPreferredKeyword,
 	KeySelectWeightFreeleech, KeySelectWeightProper,
+	KeySelectMovieLangRequired, KeySelectMovieLangPreferred,
+	KeySelectSeriesLangRequired, KeySelectSeriesLangPreferred,
+	KeySelectAnimeLangRequired, KeySelectAnimeLangPreferred,
+	KeySelectAnimeRequireAny, KeySelectAnimePreferSubs,
+	KeySelectWeightLanguage, KeySelectWeightSubs,
 }
 
 // SelectionConfig builds the live selection score from current settings: it
@@ -78,4 +95,27 @@ func (s *Store) SelectionConfig() selection.Config {
 	c.SelectWeightFreeleech = s.intv(KeySelectWeightFreeleech, s.seed.SelectWeightFreeleech)
 	c.SelectWeightProper = s.intv(KeySelectWeightProper, s.seed.SelectWeightProper)
 	return selection.FromConfig(&c)
+}
+
+// SelectionConfigFor returns the selection score for a content type ("movie",
+// "series", "anime") — the base config plus that type's language rules. Other
+// kinds (e.g. "" for free search) get no language gate.
+func (s *Store) SelectionConfigFor(kind string) selection.Config {
+	cfg := s.SelectionConfig()
+	cfg.WeightLanguage = s.intv(KeySelectWeightLanguage, s.seed.SelectWeightLanguage)
+	cfg.WeightSubs = s.intv(KeySelectWeightSubs, s.seed.SelectWeightSubs)
+	switch kind {
+	case "movie":
+		cfg.RequiredLanguages = s.csv(KeySelectMovieLangRequired, s.seed.SelectMovieLangRequired)
+		cfg.PreferredLanguages = s.csv(KeySelectMovieLangPreferred, s.seed.SelectMovieLangPreferred)
+	case "series":
+		cfg.RequiredLanguages = s.csv(KeySelectSeriesLangRequired, s.seed.SelectSeriesLangRequired)
+		cfg.PreferredLanguages = s.csv(KeySelectSeriesLangPreferred, s.seed.SelectSeriesLangPreferred)
+	case "anime":
+		cfg.RequiredLanguages = s.csv(KeySelectAnimeLangRequired, s.seed.SelectAnimeLangRequired)
+		cfg.PreferredLanguages = s.csv(KeySelectAnimeLangPreferred, s.seed.SelectAnimeLangPreferred)
+		cfg.RequireAnyLanguage = s.boolv(KeySelectAnimeRequireAny, s.seed.SelectAnimeRequireAny)
+		cfg.PreferEnglishSubs = s.boolv(KeySelectAnimePreferSubs, s.seed.SelectAnimePreferSubs)
+	}
+	return cfg
 }

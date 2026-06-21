@@ -113,6 +113,16 @@ func (s *Store) EffectiveNonSecret() map[string]string {
 		KeySelectWeightPreferredKeyword:        itoa(c.WeightPreferredKeyword),
 		KeySelectWeightFreeleech:               itoa(c.WeightFreeleech),
 		KeySelectWeightProper:                  itoa(c.WeightProper),
+		KeySelectMovieLangRequired:             strings.Join(s.csv(KeySelectMovieLangRequired, s.seed.SelectMovieLangRequired), ","),
+		KeySelectMovieLangPreferred:            strings.Join(s.csv(KeySelectMovieLangPreferred, s.seed.SelectMovieLangPreferred), ","),
+		KeySelectSeriesLangRequired:            strings.Join(s.csv(KeySelectSeriesLangRequired, s.seed.SelectSeriesLangRequired), ","),
+		KeySelectSeriesLangPreferred:           strings.Join(s.csv(KeySelectSeriesLangPreferred, s.seed.SelectSeriesLangPreferred), ","),
+		KeySelectAnimeLangRequired:             strings.Join(s.csv(KeySelectAnimeLangRequired, s.seed.SelectAnimeLangRequired), ","),
+		KeySelectAnimeLangPreferred:            strings.Join(s.csv(KeySelectAnimeLangPreferred, s.seed.SelectAnimeLangPreferred), ","),
+		KeySelectAnimeRequireAny:               boolStr(s.boolv(KeySelectAnimeRequireAny, s.seed.SelectAnimeRequireAny)),
+		KeySelectAnimePreferSubs:               boolStr(s.boolv(KeySelectAnimePreferSubs, s.seed.SelectAnimePreferSubs)),
+		KeySelectWeightLanguage:                itoa(s.intv(KeySelectWeightLanguage, s.seed.SelectWeightLanguage)),
+		KeySelectWeightSubs:                    itoa(s.intv(KeySelectWeightSubs, s.seed.SelectWeightSubs)),
 	} {
 		eff[k] = v
 	}

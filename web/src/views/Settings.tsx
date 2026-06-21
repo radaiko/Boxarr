@@ -106,6 +106,21 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
       { key: 'select.weight_proper', label: 'Proper/Repack bonus' },
     ],
   },
+  {
+    title: 'Release selection — languages',
+    fields: [
+      { key: 'select.movie_lang_required', label: 'Movies — required languages', placeholder: 'DE' },
+      { key: 'select.movie_lang_preferred', label: 'Movies — preferred (boost)', placeholder: 'EN' },
+      { key: 'select.series_lang_required', label: 'Series — required languages', placeholder: 'DE' },
+      { key: 'select.series_lang_preferred', label: 'Series — preferred (boost)', placeholder: 'EN' },
+      { key: 'select.anime_lang_required', label: 'Anime — required languages', placeholder: 'DE,EN' },
+      { key: 'select.anime_lang_preferred', label: 'Anime — preferred (boost)', placeholder: 'EN' },
+      { key: 'select.anime_require_any', label: 'Anime: any one required language is enough', bool: true },
+      { key: 'select.anime_prefer_subs', label: 'Anime: prefer English subtitles', bool: true },
+      { key: 'select.weight_language', label: 'Preferred-language bonus' },
+      { key: 'select.weight_subs', label: 'English-subs bonus' },
+    ],
+  },
 ]
 
 // Maps a settings group title to a test service + the request body built from
@@ -133,7 +148,7 @@ const TABS: { id: string; groups: string[] }[] = [
   { id: 'Requests', groups: [] }, // special Seerr key panel
   { id: 'Library', groups: ['Library & WebDAV'] },
   { id: 'Downloads', groups: ['Intervals & automation'] },
-  { id: 'Selection', groups: ['Release selection — filters', 'Release selection — weights'] },
+  { id: 'Selection', groups: ['Release selection — filters', 'Release selection — weights', 'Release selection — languages'] },
   { id: 'General', groups: [] }, // special web-UI key panel
 ]
 const byTitle = Object.fromEntries(groups.map((g) => [g.title, g]))

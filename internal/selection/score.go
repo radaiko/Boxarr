@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/release"
 )
 
 // SizeLimit is a per-quality byte band (0 = unbounded).
@@ -44,6 +45,17 @@ type Config struct {
 	WeightPreferredKeyword        int
 	WeightFreeleech               int
 	WeightProper                  int
+
+	// Language rules (resolved per content type by settings.SelectionConfigFor).
+	// RequiredLanguages gates releases by detected audio language; RequireAny means
+	// any-of (anime: DE or EN) rather than all-of (movies/series: DE). MULTi acts as
+	// a wildcard. PreferredLanguages and English subs only boost the score.
+	RequiredLanguages  []string
+	RequireAnyLanguage bool
+	PreferredLanguages []string
+	WeightLanguage     int
+	PreferEnglishSubs  bool
+	WeightSubs         int
 }
 
 // Release is the scoring view of a candidate (Prowlarr fields + parsed quality).
@@ -132,7 +144,44 @@ func (cfg Config) Rejected(r Release) bool {
 	if r.Protocol == "torrent" && cfg.RequireCached && !r.Cached {
 		return true
 	}
+	if len(cfg.RequiredLanguages) > 0 {
+		langs := release.DetectLanguages(r.Title)
+		if cfg.RequireAnyLanguage {
+			// Any-of (anime DE or EN): only reject when languages ARE tagged but
+			// none match — untagged ≈ original/English, common for anime.
+			if len(langs) > 0 && !anyLangSatisfied(cfg.RequiredLanguages, langs) {
+				return true
+			}
+		} else if !allLangsSatisfied(cfg.RequiredLanguages, langs) {
+			// All-of (movies/series require German): missing/untagged → reject.
+			return true
+		}
+	}
 	return false
+}
+
+// langSatisfied treats MULTi as a wildcard (a multi-language release is assumed to
+// include the wanted track) so good MULTi releases aren't rejected.
+func langSatisfied(have []string, want string) bool {
+	return contains(have, want) || contains(have, "MULTI")
+}
+
+func anyLangSatisfied(want, have []string) bool {
+	for _, w := range want {
+		if langSatisfied(have, w) {
+			return true
+		}
+	}
+	return false
+}
+
+func allLangsSatisfied(want, have []string) bool {
+	for _, w := range want {
+		if !langSatisfied(have, w) {
+			return false
+		}
+	}
+	return true
 }
 
 // Score returns the weighted score for r, or math.MinInt if rejected.
@@ -176,6 +225,17 @@ func (cfg Config) Score(r Release) int {
 	}
 	if r.Proper || r.Repack {
 		s += cfg.WeightProper
+	}
+	if len(cfg.PreferredLanguages) > 0 || cfg.PreferEnglishSubs {
+		langs := release.DetectLanguages(r.Title)
+		for _, pl := range cfg.PreferredLanguages {
+			if contains(langs, pl) {
+				s += cfg.WeightLanguage
+			}
+		}
+		if cfg.PreferEnglishSubs && release.HasEnglishSubs(r.Title) {
+			s += cfg.WeightSubs
+		}
 	}
 	return s
 }

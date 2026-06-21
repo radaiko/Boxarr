@@ -51,3 +51,20 @@ func DetectLanguages(name string) []string {
 	}
 	return out
 }
+
+// subMarkers signal embedded subtitles in a release name (English-ish; VOSTFR is
+// French subs and deliberately excluded).
+var subMarkers = []string{"esub", "esubs", "engsub", "engsubs", "english.sub", "eng.sub", "multisub", "multi.sub", "subbed"}
+
+// HasEnglishSubs best-effort reports whether a release name signals English (or
+// multi) subtitles. Filename subtitle info is unreliable, so this is only used to
+// prefer — never to reject. ffprobe can confirm exact tracks later.
+func HasEnglishSubs(name string) bool {
+	s := strings.ToLower(name)
+	for _, m := range subMarkers {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}

@@ -55,7 +55,7 @@ func (s *Service) SearchWantedForMovie(ctx context.Context, movieID int64) error
 	if err != nil {
 		return err
 	}
-	best, ok := s.pickBest(results)
+	best, ok := s.pickBest(results, "movie")
 	if !ok {
 		return nil // nothing acceptable; stays wanted
 	}
@@ -84,6 +84,10 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 	if err != nil {
 		return err
 	}
+	kind := "series"
+	if sr.SeriesType == "anime" {
+		kind = "anime"
+	}
 	today := time.Now().UTC().Format("2006-01-02")
 	for _, ep := range episodes {
 		if ep.HasFile || !ep.Monitored || ep.AirDate == "" || ep.AirDate > today {
@@ -95,7 +99,7 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 			s.logSearchErr(q, serr)
 			continue
 		}
-		best, ok := s.pickBest(results)
+		best, ok := s.pickBest(results, kind)
 		if !ok {
 			continue
 		}
@@ -114,8 +118,8 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 
 // pickBest scores results with the configured selection score and returns the
 // best non-rejected release.
-func (s *Service) pickBest(results []prowlarr.ReleaseResource) (prowlarr.ReleaseResource, bool) {
-	cfg := s.set.SelectionConfig()
+func (s *Service) pickBest(results []prowlarr.ReleaseResource, kind string) (prowlarr.ReleaseResource, bool) {
+	cfg := s.set.SelectionConfigFor(kind)
 	bestIdx, bestScore := -1, 0
 	for i, rr := range results {
 		rel := selection.Release{

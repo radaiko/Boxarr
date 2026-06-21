@@ -62,7 +62,11 @@ func (w *Workers) researchAndResubmit(ctx context.Context, j *job.Job) (int64, s
 	if err != nil {
 		return 0, "", fmt.Errorf("prowlarr search: %w", err)
 	}
-	best, ok := pickBestRelease(w.set.SelectionConfig(), results)
+	healKind := "series"
+	if j.MediaType == "movie" {
+		healKind = "movie"
+	}
+	best, ok := pickBestRelease(w.set.SelectionConfigFor(healKind), results)
 	if !ok {
 		return 0, "", fmt.Errorf("no acceptable release for %q", query)
 	}

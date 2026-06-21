@@ -109,6 +109,20 @@ type Config struct {
 	SelectWeightFreeleech               int `envconfig:"SELECT_WEIGHT_FREELEECH" default:"40"`
 	SelectWeightProper                  int `envconfig:"SELECT_WEIGHT_PROPER" default:"25"`
 
+	// ── Language rules per content type (reject on missing required language;
+	// boost preferred + English subs). Defaults: German required on movies/series
+	// with English preferred; anime accepts German OR English, prefers EN subs. ──
+	SelectMovieLangRequired   []string `envconfig:"SELECT_MOVIE_LANG_REQUIRED" default:"DE"`
+	SelectMovieLangPreferred  []string `envconfig:"SELECT_MOVIE_LANG_PREFERRED" default:"EN"`
+	SelectSeriesLangRequired  []string `envconfig:"SELECT_SERIES_LANG_REQUIRED" default:"DE"`
+	SelectSeriesLangPreferred []string `envconfig:"SELECT_SERIES_LANG_PREFERRED" default:"EN"`
+	SelectAnimeLangRequired   []string `envconfig:"SELECT_ANIME_LANG_REQUIRED" default:"DE,EN"`
+	SelectAnimeLangPreferred  []string `envconfig:"SELECT_ANIME_LANG_PREFERRED" default:"EN"`
+	SelectAnimeRequireAny     bool     `envconfig:"SELECT_ANIME_REQUIRE_ANY" default:"true"`
+	SelectAnimePreferSubs     bool     `envconfig:"SELECT_ANIME_PREFER_SUBS" default:"true"`
+	SelectWeightLanguage      int      `envconfig:"SELECT_WEIGHT_LANGUAGE" default:"40"`
+	SelectWeightSubs          int      `envconfig:"SELECT_WEIGHT_SUBS" default:"20"`
+
 	// ── Limit knobs (NEW — FR-LIM-2/3) ──
 	MaxActiveDownloads int `envconfig:"MAX_ACTIVE_DOWNLOADS" default:"0"`
 	MaxCreatePerHour   int `envconfig:"MAX_CREATE_PER_HOUR" default:"60"`
