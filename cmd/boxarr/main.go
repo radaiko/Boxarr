@@ -22,6 +22,7 @@ import (
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
+	"github.com/radaiko/boxarr/internal/task"
 	"github.com/radaiko/boxarr/internal/web"
 	"github.com/radaiko/boxarr/internal/worker"
 )
@@ -81,12 +82,14 @@ func run() error {
 	workers.SetAutomation(cat) // loops self-gate on the live AutomationEnabled() setting
 	workers.SetAdoptResolver(cat)
 
+	tasks := task.New(ctx) // background runner for adopt/delete (survives requests)
+
 	srv := api.NewServer(st, cfg, logger)
 	srv.SetHealth(api.NewHealth(st, tbAPI, 5*time.Minute))
 	srv.SetHealReporter(workers)
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
 		Store: st, Settings: set, Catalog: cat, Health: workers, Reconciler: workers, Adopter: workers,
-		Deleter: workers, Converter: workers, Logger: logger, Version: version,
+		Deleter: workers, Converter: workers, Tasks: tasks, Logger: logger, Version: version,
 	}).Router())
 	seerrDeps := seerr.Deps{Store: st, Settings: set, Catalog: cat, Logger: logger}
 	srv.SetSeerr(

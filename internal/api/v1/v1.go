@@ -16,6 +16,7 @@ import (
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
+	"github.com/radaiko/boxarr/internal/task"
 )
 
 // HealReporter exposes a worker loop's last/next run times (satisfied by worker.Workers).
@@ -56,6 +57,7 @@ type Deps struct {
 	Adopter    Adopter
 	Deleter    Deleter
 	Converter  SeriesConverter
+	Tasks      *task.Manager // background runner for adopt/delete (nil = run inline)
 	Logger     *slog.Logger
 	Version    string
 }
@@ -91,6 +93,7 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/movies/{id}/grab", h.grabMovie)
 	r.Get("/search", h.freeSearch)
 	r.Get("/storage", h.storage)
+	r.Get("/activity", h.activity)
 	r.Get("/webdav", h.listWebDAV)
 	r.Post("/webdav/refresh", h.refreshWebDAV)
 	r.Post("/webdav/delete", h.deleteWebDAV)

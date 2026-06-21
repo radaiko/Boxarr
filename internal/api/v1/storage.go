@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/release"
+	"github.com/radaiko/boxarr/internal/task"
 	"github.com/radaiko/boxarr/internal/webdav"
 )
 
@@ -135,11 +136,36 @@ func (h *Handler) deleteWebDAV(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "bad_request", "ids is required")
 		return
 	}
-	ctx := r.Context()
+	ids := body.IDs
+	// Background it so a multi-item delete survives the user navigating away.
+	if h.deps.Tasks != nil {
+		label := plural(len(ids), "item", "items")
+		id := h.deps.Tasks.Enqueue("delete", label, func(ctx context.Context) error {
+			h.runDelete(ctx, ids)
+			return nil
+		})
+		h.writeJSON(w, http.StatusAccepted, map[string]any{"taskId": id, "queued": true})
+		return
+	}
+	deleted, failed := h.runDelete(r.Context(), ids)
+	h.writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "failed": failed})
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return strconv.Itoa(n) + " " + many
+}
+
+// runDelete removes the given mount items: matching TorBox download (mylists
+// fetched once), the mount folder, and the row — tearing down tracked imports
+// first so no library symlink dangles.
+func (h *Handler) runDelete(ctx context.Context, ids []int64) (deleted, failed int) {
 	all, err := h.deps.Store.ListWebDAVItems(ctx)
 	if err != nil {
-		h.serverError(w, "listing webdav items", err)
-		return
+		h.deps.Logger.Warn("delete: listing webdav items", "error", err)
+		return 0, len(ids)
 	}
 	byID := make(map[int64]*webdav.WebDAVItem, len(all))
 	for _, it := range all {
@@ -158,8 +184,7 @@ func (h *Handler) deleteWebDAV(w http.ResponseWriter, r *http.Request) {
 			uIdx[strings.ToLower(d.Name)] = int64(d.ID)
 		}
 	}
-	deleted, failed := 0, 0
-	for _, id := range body.IDs {
+	for _, id := range ids {
 		it := byID[id]
 		if it == nil {
 			continue
@@ -187,7 +212,7 @@ func (h *Handler) deleteWebDAV(w http.ResponseWriter, r *http.Request) {
 		}
 		deleted++
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "failed": failed})
+	return deleted, failed
 }
 
 // adoptWebDAV imports an unknown mount item into the library (TMDB match → catalog
@@ -235,10 +260,23 @@ func (h *Handler) adoptWebDAV(w http.ResponseWriter, r *http.Request) {
 	if kind == "" {
 		kind, _, _, _ = classifyRelease(item.Name)
 	}
-	if err := h.deps.Adopter.AdoptUnknown(ctx, item.RemotePath, item.Name, kind, body.TMDBID); err != nil {
-		// Log it too — otherwise the reason only reaches the browser (it was
-		// invisible in the container logs).
-		h.deps.Logger.Warn("webdav adopt failed", "name", item.Name, "kind", kind, "tmdbId", body.TMDBID, "error", err)
+	remotePath, name := item.RemotePath, item.Name
+	tmdbID := body.TMDBID
+	adopt := func(ctx context.Context) error {
+		if err := h.deps.Adopter.AdoptUnknown(ctx, remotePath, name, kind, tmdbID); err != nil {
+			h.deps.Logger.Warn("webdav adopt failed", "name", name, "kind", kind, "tmdbId", tmdbID, "error", err)
+			return err
+		}
+		return nil
+	}
+	// Run adopts in the background so they survive the user navigating away (the
+	// import can take a while); fall back to inline when no task runner is wired.
+	if h.deps.Tasks != nil {
+		id := h.deps.Tasks.Enqueue("adopt", name, adopt)
+		h.writeJSON(w, http.StatusAccepted, map[string]any{"taskId": id, "queued": true})
+		return
+	}
+	if err := adopt(ctx); err != nil {
 		h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 		return
 	}
@@ -270,6 +308,27 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 		out = append(out, dto)
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
+}
+
+// activity returns the live download queue (jobs in flight) plus recent
+// background tasks (adopt/delete) for the Activity view.
+func (h *Handler) activity(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	jobs, _ := h.deps.Store.JobsByState(ctx,
+		job.StatePending, job.StateSubmitting, job.StateQueued, job.StateDownloading,
+		job.StateSeeding, job.StateCompleted, job.StateHealing)
+	downloads := make([]map[string]any, 0, len(jobs))
+	for _, j := range jobs {
+		downloads = append(downloads, map[string]any{
+			"id": j.ID, "name": j.NZBName, "state": string(j.State), "mediaType": j.MediaType,
+			"progress": j.ProgressPct, "protocol": j.Protocol, "createdAt": rfc3339(j.CreatedAt),
+		})
+	}
+	tasks := []task.Task{}
+	if h.deps.Tasks != nil {
+		tasks = h.deps.Tasks.List()
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"downloads": downloads, "tasks": tasks})
 }
 
 // posterByTitle maps lower-cased catalog titles → poster path, so tracked mount

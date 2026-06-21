@@ -7,6 +7,7 @@ import { Series } from './views/Series'
 import { Notifications } from './views/Notifications'
 import { Storage } from './views/Storage'
 import { WebDAV } from './views/WebDAV'
+import { Activity } from './views/Activity'
 
 const NAV = [
   { id: 'Movies', icon: 'movies', group: 'Library' },
@@ -14,6 +15,7 @@ const NAV = [
   { id: 'Anime', icon: 'anime', group: 'Library' },
   { id: 'WebDAV', icon: 'webdav', group: 'System' },
   { id: 'Storage', icon: 'storage', group: 'System' },
+  { id: 'Activity', icon: 'download', group: 'Activity' },
   { id: 'Notifications', icon: 'notifications', group: 'Activity' },
   { id: 'Settings', icon: 'settings', group: 'Config' },
 ] as const
@@ -41,6 +43,7 @@ export function App() {
     if (id === 'Movies') return counts?.movies
     if (id === 'Series') return counts?.series
     if (id === 'Anime') return counts?.anime
+    if (id === 'Activity') return counts?.activeJobs
     if (id === 'Notifications') return counts?.unreadNotifications
     return undefined
   }
@@ -88,6 +91,7 @@ export function App() {
           {view === 'Anime' && <Series anime />}
           {view === 'WebDAV' && <WebDAV />}
           {view === 'Storage' && <Storage />}
+          {view === 'Activity' && <Activity />}
           {view === 'Notifications' && <Notifications />}
           {view === 'Settings' && <Settings />}
         </main>
