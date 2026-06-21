@@ -1,64 +1,165 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Boxarr streaming stack for Plex (TorBox-backed)
+#
+# Boxarr REPLACES sab2torbox + Sonarr-stream + Radarr-stream: it does search
+# (Prowlarr), grabbing (TorBox usenet+torrent), import, and library management
+# itself, and emulates Sonarr/Radarr v3 so Seerr can request straight into it.
+#
+#   Seerr ──requests──▶ Boxarr (/sonarr, /radarr emulation)
+#                          │  search via Prowlarr → grab via TorBox
+#                          ▼
+#                       TorBox  ──WebDAV──▶ rclone FUSE mount at /mnt/torbox
+#                          │
+#                          ▼  Boxarr writes a SYMLINK in the library pointing
+#                             at the file on the mount (no byte copy, no rename,
+#                             NO same-filesystem requirement)
+#                       /mnt/library/{movies,tv}/…  ──▶ Plex
+#
+# ─── Why the library no longer needs to share the WebDAV filesystem ───────
+# The old sab2torbox flow needed /mnt/smedia to be the SAME filesystem as
+# /mnt/torbox so *arr "import" was a rename. Boxarr imports by writing a
+# symlink directly at the final Plex path, so the library can be any small
+# local directory. The ONLY hard requirement (Assumption D): every container
+# that must resolve those symlinks — Boxarr AND Plex — has to see /mnt/torbox
+# at the SAME absolute path, because the symlink target is absolute.
+#
+# ─── Config: all in the UI, no env required ───────────────────────────────
+# Boxarr boots with zero connection env and is configured from its Settings
+# page (TorBox token, Prowlarr, TMDB, Plex, Seerr keys, library roots, the
+# selection score, automation). The env vars below are an OPTIONAL pre-seed
+# for Komodo's Environment tab; UI-set values win and apply without a restart.
+#
+# ─── Komodo Environment (Stack → Environment tab; mark secrets) ───────────
+#   TORBOX_API_KEY        [secret]   torbox.app/settings → API Key
+#   PROWLARR_API_KEY      [secret]   Prowlarr → Settings → General
+#   TMDB_API_KEY          [secret]   TMDB → Settings → API → Read Access Token (v4)
+#   BOXARR_SEERR_API_KEY  [secret]   pick a random string; Seerr uses it
+#   BOXARR_IMAGE                     e.g. ghcr.io/radaiko/boxarr:0.0.1-dev
+# ──────────────────────────────────────────────────────────────────────────
+
 services:
+  # ─── Boxarr ──────────────────────────────────────────────────────────────
   boxarr:
-    image: ghcr.io/radaiko/boxarr:latest
+    image: ${BOXARR_IMAGE:-ghcr.io/radaiko/boxarr:latest}
     container_name: boxarr
     restart: unless-stopped
+    # distroless runs as nonroot (65532) by default; override to your appdata
+    # owner so /config + the library dir are writable.
+    user: "1000:1000"
     environment:
-      # ── Core (required) ──
-      - BOXARR_TORBOX_API_TOKEN=${TORBOX_API_TOKEN}
-      - BOXARR_PROWLARR_URL=${PROWLARR_URL}
-      - BOXARR_PROWLARR_API_KEY=${PROWLARR_API_KEY}
-      - BOXARR_TMDB_API_KEY=${TMDB_API_KEY}
-      - BOXARR_WEBDAV_MOUNT_ROOT=/mnt/torbox
-      # Leave empty: TorBox creates one folder per release directly under the
-      # mount root. Set only if your WebDAV nests releases under a subdir.
-      - BOXARR_WEBDAV_USENET_SUBPATH=
-      - BOXARR_WEBDAV_TORRENT_SUBPATH=
-      # Library roots (Plex-standard layout). Must share the WebDAV mount's
-      # filesystem and be mounted at the SAME absolute path in the Plex container.
-      - BOXARR_MOVIE_LIBRARY_ROOT=/data/movies
-      - BOXARR_TV_LIBRARY_ROOT=/data/tv
-      # SYMLINK_ROOT is transitional (the reused worker still references it; the
-      # importer drops it in Phase 1). Point it inside the shared filesystem.
-      - BOXARR_SYMLINK_ROOT=/data/_incoming
       - BOXARR_DATABASE_PATH=/config/boxarr.db
-      - BOXARR_POLL_INTERVAL=1m
-      - BOXARR_RECONCILE_INTERVAL=15m
-      - BOXARR_METADATA_REFRESH_INTERVAL=24h
-      - BOXARR_LOG_LEVEL=info
-      # ── Optional integrations ──
-      - BOXARR_API_KEY=${BOXARR_API_KEY:-}
-      - BOXARR_TVDB_API_KEY=${TVDB_API_KEY:-}
-      - BOXARR_TVDB_PIN=${TVDB_PIN:-}
+      - BOXARR_LISTEN_ADDR=:8080
+      - TZ=Europe/Vienna
+      # ── Optional pre-seed (or just set these in the UI → Settings) ──
+      - BOXARR_TORBOX_API_TOKEN=${TORBOX_API_KEY:-}
+      - BOXARR_PROWLARR_URL=${PROWLARR_URL:-http://host.docker.internal:9696}
+      - BOXARR_PROWLARR_API_KEY=${PROWLARR_API_KEY:-}
+      - BOXARR_TMDB_API_KEY=${TMDB_API_KEY:-}
+      - BOXARR_SEERR_API_KEYS=${BOXARR_SEERR_API_KEY:-}
+      - BOXARR_WEBDAV_MOUNT_ROOT=/mnt/torbox
+      - BOXARR_MOVIE_LIBRARY_ROOT=/mnt/library/movies
+      - BOXARR_TV_LIBRARY_ROOT=/mnt/library/tv
       - BOXARR_PLEX_URL=${PLEX_URL:-}
       - BOXARR_PLEX_TOKEN=${PLEX_TOKEN:-}
-      - BOXARR_SEERR_API_KEYS=${SEERR_API_KEYS:-}
-      # Optional: auto-force TorBox's WebDAV refresh on completion (both creds).
-      - BOXARR_TORBOX_WEBDAV_USER=${TORBOX_WEBDAV_USER:-}
-      - BOXARR_TORBOX_WEBDAV_PASS=${TORBOX_WEBDAV_PASS:-}
-      - TZ=Europe/Vienna
     ports:
       - "8181:8080"
     volumes:
-      # /config must be writable by uid 65532 (the distroless nonroot user).
-      - ./config:/config
-      # The rclone WebDAV mount. rslave lets the container see the host mount
-      # without propagating its own mounts back to the host. Mount at the SAME
-      # absolute path in the Plex container (Assumption D).
+      - /mnt/appdata/boxarr:/config
+      # Library: a plain local dir that holds only symlinks (tiny). Plex mounts
+      # this same path too.
+      - /mnt/library:/mnt/library
+      # The rclone WebDAV mount (symlink targets resolve here). rslave lets the
+      # container see the host mount. Plex MUST mount this at /mnt/torbox too.
       - type: bind
         source: /mnt/torbox
         target: /mnt/torbox
         bind:
           propagation: rslave
-      # The filesystem holding the movie + TV library roots (same FS as the
-      # WebDAV mount). Mount into the Plex container at the same path too.
-      - type: bind
-        source: /data
-        target: /data
-        bind:
-          propagation: rslave
+    depends_on:
+      - rclone
+    networks:
+      - media
     healthcheck:
       test: ["CMD", "/boxarr", "healthcheck"]
       interval: 60s
       timeout: 5s
       retries: 3
+
+  # ─── rclone: TorBox WebDAV → FUSE mount at /mnt/torbox (unchanged) ────────
+  rclone:
+    image: rclone/rclone:latest
+    container_name: rclone
+    restart: unless-stopped
+    cap_add: [SYS_ADMIN]
+    devices: ["/dev/fuse:/dev/fuse"]
+    security_opt: ["apparmor:unconfined"]
+    environment:
+      - TZ=Europe/Vienna
+    volumes:
+      - /mnt/appdata/rclone/rclone.conf:/config/rclone/rclone.conf:ro
+      - /mnt/appdata/rclone/cache:/cache
+      - type: bind
+        source: /mnt/torbox
+        target: /data
+        bind:
+          propagation: rshared
+    command: >
+      mount torbox: /data
+      --allow-other --allow-non-empty --dir-cache-time 9999h --poll-interval 0
+      --vfs-cache-mode full --vfs-cache-max-size 50G --vfs-cache-max-age 168h
+      --vfs-read-ahead 256M --vfs-read-chunk-size 32M --vfs-read-chunk-size-limit 1G
+      --buffer-size 64M --vfs-fast-fingerprint --no-checksum --no-modtime
+      --transfers 4 --checkers 2 --tpslimit 5 --tpslimit-burst 5 --low-level-retries 3
+      --attr-timeout 9999h --umask 002 --uid 1000 --gid 1000 --cache-dir /cache --log-level INFO
+    networks:
+      - media
+
+  # ─── Seerr: request UI → points at Boxarr's Sonarr/Radarr emulation ───────
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    init: true
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - TZ=Europe/Vienna
+      - PORT=5055
+    volumes:
+      - /mnt/appdata/seerr:/app/config
+    ports:
+      - "5055:5055"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - media
+
+networks:
+  media:
+    name: media
+    driver: bridge
+
+# ──────────────────────────────────────────────────────────────────────────
+# SEERR SETUP (one-time): Seerr → Settings → Services
+#   Sonarr → +Add → Server URL: http://boxarr:8080/sonarr   (API key = BOXARR_SEERR_API_KEY)
+#   Radarr → +Add → Server URL: http://boxarr:8080/radarr   (API key = BOXARR_SEERR_API_KEY)
+#   (Quality Profile / Root Folder dropdowns are served by Boxarr's emulation.)
+#
+# PLEX (separate stack) — add BOTH mounts so symlinks resolve:
+#   services:
+#     plex:
+#       volumes:
+#         - type: bind   # the library (where Boxarr writes symlinks)
+#           source: /mnt/library
+#           target: /mnt/library
+#           bind: { propagation: rslave }
+#         - type: bind   # the symlink targets — SAME absolute path as Boxarr
+#           source: /mnt/torbox
+#           target: /mnt/torbox
+#           bind: { propagation: rslave }
+#   Plex libraries:  Movies → /mnt/library/movies   Shows → /mnt/library/tv
+#
+# HOST PREP:
+#   mkdir -p /mnt/appdata/{boxarr,rclone,seerr} /mnt/torbox /mnt/library/{movies,tv}
+#   chown -R 1000:1000 /mnt/appdata/{boxarr,rclone,seerr} /mnt/torbox /mnt/library
+#   (rclone/FUSE host prep — fuse module + shared mount on /mnt/torbox — unchanged.)
+# ──────────────────────────────────────────────────────────────────────────

@@ -9,7 +9,6 @@ import (
 	"github.com/radaiko/boxarr/internal/metadata/tvdb"
 	"github.com/radaiko/boxarr/internal/plex"
 	"github.com/radaiko/boxarr/internal/prowlarr"
-	"github.com/radaiko/boxarr/internal/selection"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
 
@@ -121,10 +120,7 @@ func (s *Store) TVDBEnabled() bool     { return s.TVDBAPIKey() != "" }
 func (s *Store) SeerrEnabled() bool    { return len(s.SeerrAPIKeys()) > 0 }
 func (s *Store) TorrentsEnabled() bool { return s.TorBoxToken() != "" }
 
-// SelectionConfig builds the live selection score config from current settings.
-func (s *Store) SelectionConfig() selection.Config {
-	return selection.FromConfig(s.seed) // seed carries the SELECT_* defaults/env
-}
+// SelectionConfig is implemented in selection.go (overlays DB on the seed).
 
 // ── Memoized client factories (rebuilt only when credentials change) ──
 

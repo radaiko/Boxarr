@@ -67,6 +67,41 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
     title: 'App',
     fields: [{ key: 'api.key', label: 'UI API key (blank = open on localhost)', secret: true }],
   },
+  {
+    title: 'Release selection — filters',
+    fields: [
+      { key: 'select.allowed_resolutions', label: 'Allowed resolutions (csv; empty = all)' },
+      { key: 'select.preferred_resolutions', label: 'Preferred resolutions (csv, best first)' },
+      { key: 'select.preferred_qualities', label: 'Preferred qualities (csv, best first)' },
+      { key: 'select.min_seeders', label: 'Min seeders (torrents)' },
+      { key: 'select.min_grabs', label: 'Min grabs (usenet)' },
+      { key: 'select.require_cached', label: 'Require cached (torrents only)', bool: true },
+      { key: 'select.min_size', label: 'Min size (bytes; 0 = unbounded)' },
+      { key: 'select.max_size', label: 'Max size (bytes; 0 = unbounded)' },
+      { key: 'select.min_score', label: 'Min score (reject below)' },
+      { key: 'select.blocked_keywords', label: 'Blocked keywords (csv)' },
+      { key: 'select.blocked_groups', label: 'Blocked groups (csv)' },
+      { key: 'select.preferred_keywords', label: 'Preferred keywords (csv)' },
+      { key: 'select.preferred_groups', label: 'Preferred groups (csv)' },
+      { key: 'select.size_limits', label: 'Per-quality size limits (JSON)' },
+    ],
+  },
+  {
+    title: 'Release selection — weights',
+    fields: [
+      { key: 'select.weight_resolution', label: 'Resolution weight' },
+      { key: 'select.weight_quality', label: 'Quality weight' },
+      { key: 'select.weight_protocol_cached_torrent', label: 'Cached-torrent weight' },
+      { key: 'select.weight_protocol_usenet', label: 'Usenet weight' },
+      { key: 'select.weight_protocol_uncached_torrent', label: 'Uncached-torrent weight' },
+      { key: 'select.weight_health', label: 'Health weight' },
+      { key: 'select.seed_saturation', label: 'Seed saturation (health divisor)' },
+      { key: 'select.weight_preferred_group', label: 'Preferred-group bonus' },
+      { key: 'select.weight_preferred_keyword', label: 'Preferred-keyword bonus' },
+      { key: 'select.weight_freeleech', label: 'Freeleech bonus' },
+      { key: 'select.weight_proper', label: 'Proper/Repack bonus' },
+    ],
+  },
 ]
 
 const testable = ['torbox', 'prowlarr', 'tmdb', 'tvdb', 'plex'] as const

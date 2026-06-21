@@ -33,6 +33,13 @@ var writableKeys = map[string]bool{
 	KeyTorBoxBaseURL: true, KeyTMDBBaseURL: true, KeyTVDBBaseURL: true,
 }
 
+func init() {
+	// Selection-score keys are all writable (and non-secret).
+	for _, k := range selectionKeys {
+		writableKeys[k] = true
+	}
+}
+
 // Writable reports whether key may be set via the settings API.
 func Writable(key string) bool { return writableKeys[key] }
 
@@ -54,7 +61,7 @@ func (s *Store) Redacted() map[string]string {
 // non-secret key, so the UI can render current settings including those still
 // coming from env/defaults.
 func (s *Store) EffectiveNonSecret() map[string]string {
-	return map[string]string{
+	eff := map[string]string{
 		KeyProwlarrURL:          s.ProwlarrURL(),
 		KeyPlexURL:              s.PlexURL(),
 		KeyPlexMovieSection:     s.PlexMovieSection(),
@@ -77,6 +84,37 @@ func (s *Store) EffectiveNonSecret() map[string]string {
 		KeyMaxTorrentPerMin:     itoa(s.MaxTorrentPerMin()),
 		KeySeerrAPIKeys:         strings.Join(s.SeerrAPIKeys(), ","),
 	}
+	c := s.SelectionConfig()
+	for k, v := range map[string]string{
+		KeySelectAllowedResolutions:            strings.Join(c.AllowedResolutions, ","),
+		KeySelectPreferredResolutions:          strings.Join(c.PreferredResolutions, ","),
+		KeySelectPreferredQualities:            strings.Join(c.PreferredQualities, ","),
+		KeySelectPreferredGroups:               strings.Join(c.PreferredGroups, ","),
+		KeySelectPreferredKeywords:             strings.Join(c.PreferredKeywords, ","),
+		KeySelectBlockedGroups:                 strings.Join(c.BlockedGroups, ","),
+		KeySelectBlockedKeywords:               strings.Join(c.BlockedKeywords, ","),
+		KeySelectMinSize:                       strconv.FormatInt(c.MinSize, 10),
+		KeySelectMaxSize:                       strconv.FormatInt(c.MaxSize, 10),
+		KeySelectSizeLimits:                    s.str(KeySelectSizeLimits, s.seed.SelectSizeLimits),
+		KeySelectMinSeeders:                    itoa(c.MinSeeders),
+		KeySelectMinGrabs:                      itoa(c.MinGrabs),
+		KeySelectRequireCached:                 boolStr(c.RequireCached),
+		KeySelectMinScore:                      itoa(c.MinScore),
+		KeySelectWeightResolution:              itoa(c.WeightResolution),
+		KeySelectWeightQuality:                 itoa(c.WeightQuality),
+		KeySelectWeightProtocolCachedTorrent:   itoa(c.WeightProtocolCachedTorrent),
+		KeySelectWeightProtocolUsenet:          itoa(c.WeightProtocolUsenet),
+		KeySelectWeightProtocolUncachedTorrent: itoa(c.WeightProtocolUncachedTorrent),
+		KeySelectWeightHealth:                  itoa(c.WeightHealth),
+		KeySelectSeedSaturation:                itoa(c.SeedSaturation),
+		KeySelectWeightPreferredGroup:          itoa(c.WeightPreferredGroup),
+		KeySelectWeightPreferredKeyword:        itoa(c.WeightPreferredKeyword),
+		KeySelectWeightFreeleech:               itoa(c.WeightFreeleech),
+		KeySelectWeightProper:                  itoa(c.WeightProper),
+	} {
+		eff[k] = v
+	}
+	return eff
 }
 
 // Configured reports, per integration, whether the credential needed to use it

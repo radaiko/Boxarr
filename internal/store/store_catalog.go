@@ -181,6 +181,21 @@ func scanSeason(row scanner) (*media.Season, error) {
 	return &m, nil
 }
 
+// ResetImportLinks reverts catalog rows imported under a job back to the
+// not-acquired state (used to roll back a failed adopt/import): movie and
+// episode rows referencing jobID lose has_file/library_path/job_id and return to
+// status 'missing'.
+func (s *Store) ResetImportLinks(ctx context.Context, jobID int64) error {
+	for _, table := range []string{"movie", "episode"} {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE `+table+` SET has_file=0, status='missing', library_path='', job_id=0 WHERE job_id=?`,
+			jobID); err != nil {
+			return fmt.Errorf("resetting %s import links: %w", table, err)
+		}
+	}
+	return nil
+}
+
 // UpsertSeason inserts a season or refreshes its metadata (preserving monitored).
 func (s *Store) UpsertSeason(ctx context.Context, m *media.Season) (int64, error) {
 	var id int64

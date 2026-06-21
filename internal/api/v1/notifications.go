@@ -116,9 +116,19 @@ func (h *Handler) notificationAction(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal([]byte(n.Payload), &p)
 
 	switch body.Action {
-	case "ignore", "adopt":
-		// Keep the content; stop flagging it. (Full library adoption — TMDB match
-		// + catalog link — is not yet implemented; this marks it accounted-for.)
+	case "adopt":
+		// Import the existing content into the library: TMDB match → catalog row →
+		// symlink → mark available. SetWebDAVItemKnown happens inside AdoptUnknown.
+		if h.deps.Adopter == nil {
+			h.writeError(w, http.StatusServiceUnavailable, "unavailable", "adopt not wired")
+			return
+		}
+		if err := h.deps.Adopter.AdoptUnknown(ctx, p.RemotePath, p.Name); err != nil {
+			h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
+			return
+		}
+	case "ignore":
+		// Keep the content but stop flagging it (no catalog entry).
 		if err := h.deps.Store.SetWebDAVItemKnown(ctx, p.RemotePath, true); err != nil {
 			h.writeError(w, http.StatusInternalServerError, "internal", "updating item")
 			return
