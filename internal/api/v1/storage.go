@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -387,7 +388,22 @@ func (h *Handler) activity(w http.ResponseWriter, r *http.Request) {
 	if h.deps.Tasks != nil {
 		tasks = h.deps.Tasks.List()
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"downloads": downloads, "tasks": tasks})
+	// Download history: recently-finished jobs (newest first, capped).
+	hist, _ := h.deps.Store.JobsByState(ctx,
+		job.StateImported, job.StateFailed, job.StateHealFailed, job.StateManuallyResolved)
+	sort.Slice(hist, func(i, j int) bool { return hist[i].CreatedAt.After(hist[j].CreatedAt) })
+	history := make([]map[string]any, 0, len(hist))
+	for i, j := range hist {
+		if i >= 50 {
+			break
+		}
+		history = append(history, map[string]any{
+			"id": j.ID, "name": j.NZBName, "state": string(j.State), "mediaType": j.MediaType,
+			"size": j.TotalBytes, "protocol": j.Protocol, "createdAt": rfc3339(j.CreatedAt),
+			"error": j.FailMessage, "release": parseReleaseMeta(j.NZBName),
+		})
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"downloads": downloads, "tasks": tasks, "history": history})
 }
 
 type catalogEntry struct {

@@ -42,6 +42,11 @@ type queued struct {
 	fn func(context.Context, *Run) error
 }
 
+// Sink persists task state so history survives restarts (optional).
+type Sink interface {
+	SaveTask(t Task)
+}
+
 // Manager owns the queue + recent-task history.
 type Manager struct {
 	mu    sync.Mutex
@@ -50,6 +55,7 @@ type Manager struct {
 	queue chan queued
 	ctx   context.Context
 	now   func() time.Time
+	sink  Sink
 }
 
 // New starts a background worker bound to ctx (the app lifetime). When ctx is
@@ -58,6 +64,28 @@ func New(ctx context.Context) *Manager {
 	m := &Manager{queue: make(chan queued, 256), ctx: ctx, now: time.Now}
 	go m.run()
 	return m
+}
+
+// SetSink wires a persistence sink (called on enqueue + state changes).
+func (m *Manager) SetSink(s Sink) {
+	m.mu.Lock()
+	m.sink = s
+	m.mu.Unlock()
+}
+
+// Load seeds the in-memory history from persisted tasks (newest first) and
+// continues ids past the highest seen, so restored history doesn't collide with
+// new tasks.
+func (m *Manager) Load(history []Task) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range history {
+		t := history[i]
+		m.tasks = append(m.tasks, &t)
+		if t.ID > m.seq {
+			m.seq = t.ID
+		}
+	}
 }
 
 func (m *Manager) run() {
@@ -101,14 +129,17 @@ func (m *Manager) Enqueue(typ, label string, fn func(context.Context, *Run) erro
 	if len(m.tasks) > 100 {
 		m.tasks = m.tasks[:100]
 	}
+	cp, sink := *t, m.sink
 	m.mu.Unlock()
+	if sink != nil {
+		sink.SaveTask(cp)
+	}
 	m.queue <- queued{t: t, fn: fn}
 	return t.ID
 }
 
 func (m *Manager) set(t *Task, state, errMsg string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	t.State, t.Error = state, errMsg
 	now := m.now()
 	if state == "running" && t.StartedAt == nil {
@@ -116,6 +147,11 @@ func (m *Manager) set(t *Task, state, errMsg string) {
 	}
 	if state == "done" || state == "error" {
 		t.FinishedAt = &now
+	}
+	cp, sink := *t, m.sink
+	m.mu.Unlock()
+	if sink != nil {
+		sink.SaveTask(cp) // persist transitions (not every progress tick)
 	}
 }
 

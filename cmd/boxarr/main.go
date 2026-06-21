@@ -83,6 +83,15 @@ func run() error {
 	workers.SetAdoptResolver(cat)
 
 	tasks := task.New(ctx) // background runner for adopt/delete (survives requests)
+	// Persist task history + recover from a restart: anything left running is
+	// flagged interrupted, then prior history is loaded into the manager.
+	if err := st.MarkRunningTasksInterrupted(ctx); err != nil {
+		logger.Warn("marking interrupted tasks", "error", err)
+	}
+	if hist, herr := st.ListTasks(ctx, 100); herr == nil {
+		tasks.Load(hist)
+	}
+	tasks.SetSink(st)
 
 	srv := api.NewServer(st, cfg, logger)
 	srv.SetHealth(api.NewHealth(st, tbAPI, 5*time.Minute))

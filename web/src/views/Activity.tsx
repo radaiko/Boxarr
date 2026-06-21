@@ -1,122 +1,177 @@
 import { useEffect, useState, Fragment } from 'react'
 import { getJSON, type FileMeta } from '../api'
-import { Icon, Loading, ErrorBanner, Empty, ago, gb, MetaChips } from '../ui'
+import { Loading, ErrorBanner, Empty, ago, gb, MetaChips } from '../ui'
 
 interface Download {
   id: number; name: string; state: string; mediaType: string; progress: number; protocol: string
   createdAt: string; size?: number; downloaded?: number; etaSeconds?: number; release?: FileMeta
 }
-interface BgTask { id: number; type: string; label: string; state: string; current?: number; total?: number; details?: string[]; error?: string; createdAt: string; finishedAt?: string }
+interface HistoryItem {
+  id: number; name: string; state: string; mediaType: string; size?: number; protocol: string
+  createdAt: string; error?: string; release?: FileMeta
+}
+interface BgTask {
+  id: number; type: string; label: string; state: string; current?: number; total?: number
+  details?: string[]; error?: string; createdAt: string; finishedAt?: string
+}
+interface ActivityResp { downloads: Download[]; tasks: BgTask[]; history: HistoryItem[] }
 
 const DL_PILL: Record<string, string> = {
   downloading: 'downloading', seeding: 'downloading', completed: 'available',
   queued: 'wanted', pending: 'wanted', submitting: 'searching', healing: 'searching',
+  imported: 'available', failed: 'broken', heal_failed: 'broken', manually_resolved: 'idle',
 }
 const TASK_PILL: Record<string, string> = { running: 'searching', done: 'available', error: 'broken', queued: 'wanted' }
+const TABS = ['Queue', 'History', 'Tasks'] as const
+type Tab = typeof TABS[number]
 
 export function Activity() {
-  const [data, setData] = useState<{ downloads: Download[]; tasks: BgTask[] } | null>(null)
+  const [data, setData] = useState<ActivityResp | null>(null)
   const [err, setErr] = useState('')
+  const [tab, setTab] = useState<Tab>('Queue')
+  const [count, setCount] = useState(50)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   function load() {
-    getJSON<{ downloads: Download[]; tasks: BgTask[] }>('/activity')
-      .then((d) => { setData(d); setErr('') })
-      .catch((e: unknown) => setErr(String(e)))
+    getJSON<ActivityResp>('/activity').then((d) => { setData(d); setErr('') }).catch((e: unknown) => setErr(String(e)))
   }
-  // Poll while the page is open so progress + task state stay live.
   useEffect(() => { load(); const t = setInterval(load, 3000); return () => clearInterval(t) }, [])
 
   if (err && !data) return <ErrorBanner message={err} />
   if (!data) return <Loading />
 
-  const active = data.tasks.filter((t) => t.state === 'queued' || t.state === 'running')
+  const counts: Record<Tab, number> = { Queue: data.downloads.length, History: data.history.length, Tasks: data.tasks.length }
 
   return (
     <section>
-      <div className="season-head"><Icon name="download" /><h3>Download queue</h3>
-        <span className="muted" style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontSize: 12 }}>{data.downloads.length} active</span>
-      </div>
-      {data.downloads.length === 0 ? (
-        <Empty icon="download" title="Nothing downloading" hint="Grabbed releases show here with live TorBox progress." />
-      ) : (
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>Release</th><th style={{ width: 90 }}>Type</th><th style={{ width: 210 }}>Progress</th><th style={{ width: 130 }}>State</th></tr></thead>
-            <tbody>
-              {data.downloads.map((d) => (
-                <tr key={d.id}>
-                  <td className="rel-title">
-                    {d.name}
-                    <div className="dl-meta">
-                      <span className="chip">{d.protocol}</span>
-                      {(d.size ?? 0) > 0 && <span className="muted">{gb(d.size!)}</span>}
-                      {d.release && <MetaChips file={d.release} />}
-                    </div>
-                  </td>
-                  <td className="muted">{d.mediaType}</td>
-                  <td>
-                    <Progress pct={d.progress} />
-                    {(d.etaSeconds ?? 0) > 0 && d.state === 'downloading' && (
-                      <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>~{eta(d.etaSeconds!)} left</div>
-                    )}
-                  </td>
-                  <td><span className={`status ${DL_PILL[d.state] ?? 'idle'}`}>{d.state}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="row-between" style={{ marginBottom: 16 }}>
+        <div className="tabs" style={{ margin: 0 }}>
+          {TABS.map((t) => (
+            <button key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
+              {t}<span className="muted" style={{ marginLeft: 6, fontSize: 11 }}>{counts[t]}</span>
+            </button>
+          ))}
         </div>
-      )}
+        <label className="chk">Show
+          <select className="input" style={{ width: 'auto', marginLeft: 8 }} value={count} onChange={(e) => setCount(Number(e.target.value))}>
+            {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      </div>
 
-      <div className="season-head" style={{ marginTop: 26 }}><Icon name="refresh" /><h3>Background tasks</h3>
-        <span className="muted" style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontSize: 12 }}>{active.length} running</span>
-      </div>
-      {data.tasks.length === 0 ? (
-        <Empty icon="refresh" title="No recent tasks" hint="Adopting or deleting WebDAV content runs here in the background." />
-      ) : (
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th style={{ width: 90 }}>Action</th><th>Item</th><th style={{ width: 130 }}>State</th><th style={{ width: 120 }}>When</th></tr></thead>
-            <tbody>
-              {data.tasks.map((t) => {
-                const details = t.details ?? []
-                const open = expanded.has(t.id)
-                return (
-                  <Fragment key={t.id}>
-                    <tr className={details.length ? 'clickable' : ''}
-                      onClick={() => details.length && setExpanded((s) => { const n = new Set(s); n.has(t.id) ? n.delete(t.id) : n.add(t.id); return n })}>
-                      <td className="muted" style={{ textTransform: 'capitalize' }}>{t.type}</td>
-                      <td className="rel-title">
-                        {details.length > 0 && <span className="muted" style={{ marginRight: 6 }}>{open ? '▾' : '▸'}</span>}
-                        {t.label}
-                        {details.length > 0 && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>({details.length})</span>}
-                        {t.error && <div className="test-bad" style={{ fontSize: 11, marginTop: 3 }}>{t.error}</div>}
-                      </td>
-                      <td>
-                        <span className={`status ${TASK_PILL[t.state] ?? 'idle'}`}>{t.state}</span>
-                        {t.state === 'running' && (t.total ?? 0) > 0 && (
-                          <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>{t.current}/{t.total}</span>
-                        )}
-                      </td>
-                      <td className="muted" style={{ fontSize: 12 }}>{ago(t.finishedAt || t.createdAt)}</td>
-                    </tr>
-                    {open && (
-                      <tr className="task-details-row">
-                        <td />
-                        <td colSpan={3}>
-                          <ul className="task-details">{details.map((d, i) => <li key={i}>{d}</li>)}</ul>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {tab === 'Queue' && <QueueTable rows={data.downloads.slice(0, count)} />}
+      {tab === 'History' && <HistoryTable rows={data.history.slice(0, count)} />}
+      {tab === 'Tasks' && <TasksTable rows={data.tasks.slice(0, count)} expanded={expanded} setExpanded={setExpanded} />}
     </section>
+  )
+}
+
+function ReleaseCell({ name, protocol, size, release, error }: {
+  name: string; protocol: string; size?: number; release?: FileMeta; error?: string
+}) {
+  return (
+    <td className="rel-title">
+      {name}
+      <div className="dl-meta">
+        <span className="chip">{protocol}</span>
+        {(size ?? 0) > 0 && <span className="muted">{gb(size!)}</span>}
+        {release && <MetaChips file={release} />}
+      </div>
+      {error && <div className="test-bad" style={{ fontSize: 11, marginTop: 3 }}>{error}</div>}
+    </td>
+  )
+}
+
+function QueueTable({ rows }: { rows: Download[] }) {
+  if (rows.length === 0) return <Empty icon="download" title="Nothing downloading" hint="Grabbed releases show here with live TorBox progress." />
+  return (
+    <div className="table-wrap">
+      <table className="tbl">
+        <thead><tr><th>Release</th><th style={{ width: 90 }}>Type</th><th style={{ width: 210 }}>Progress</th><th style={{ width: 130 }}>State</th></tr></thead>
+        <tbody>
+          {rows.map((d) => (
+            <tr key={d.id}>
+              <ReleaseCell name={d.name} protocol={d.protocol} size={d.size} release={d.release} />
+              <td className="muted">{d.mediaType}</td>
+              <td>
+                <Progress pct={d.progress} />
+                {(d.etaSeconds ?? 0) > 0 && d.state === 'downloading' && (
+                  <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>~{eta(d.etaSeconds!)} left</div>
+                )}
+              </td>
+              <td><span className={`status ${DL_PILL[d.state] ?? 'idle'}`}>{d.state}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function HistoryTable({ rows }: { rows: HistoryItem[] }) {
+  if (rows.length === 0) return <Empty icon="download" title="No download history" hint="Finished and failed downloads are kept here." />
+  return (
+    <div className="table-wrap">
+      <table className="tbl">
+        <thead><tr><th>Release</th><th style={{ width: 90 }}>Type</th><th style={{ width: 130 }}>State</th><th style={{ width: 120 }}>When</th></tr></thead>
+        <tbody>
+          {rows.map((d) => (
+            <tr key={d.id}>
+              <ReleaseCell name={d.name} protocol={d.protocol} size={d.size} release={d.release} error={d.error} />
+              <td className="muted">{d.mediaType}</td>
+              <td><span className={`status ${DL_PILL[d.state] ?? 'idle'}`}>{d.state}</span></td>
+              <td className="muted" style={{ fontSize: 12 }}>{ago(d.createdAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function TasksTable({ rows, expanded, setExpanded }: {
+  rows: BgTask[]; expanded: Set<number>; setExpanded: (f: (s: Set<number>) => Set<number>) => void
+}) {
+  if (rows.length === 0) return <Empty icon="refresh" title="No tasks" hint="Adopting or deleting WebDAV content runs here in the background." />
+  return (
+    <div className="table-wrap">
+      <table className="tbl">
+        <thead><tr><th style={{ width: 90 }}>Action</th><th>Item</th><th style={{ width: 130 }}>State</th><th style={{ width: 120 }}>When</th></tr></thead>
+        <tbody>
+          {rows.map((t) => {
+            const details = t.details ?? []
+            const open = expanded.has(t.id)
+            return (
+              <Fragment key={t.id}>
+                <tr className={details.length ? 'clickable' : ''}
+                  onClick={() => details.length && setExpanded((s) => { const n = new Set(s); n.has(t.id) ? n.delete(t.id) : n.add(t.id); return n })}>
+                  <td className="muted" style={{ textTransform: 'capitalize' }}>{t.type}</td>
+                  <td className="rel-title">
+                    {details.length > 0 && <span className="muted" style={{ marginRight: 6 }}>{open ? '▾' : '▸'}</span>}
+                    {t.label}
+                    {details.length > 0 && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>({details.length})</span>}
+                    {t.error && <div className="test-bad" style={{ fontSize: 11, marginTop: 3 }}>{t.error}</div>}
+                  </td>
+                  <td>
+                    <span className={`status ${TASK_PILL[t.state] ?? 'idle'}`}>{t.state}</span>
+                    {t.state === 'running' && (t.total ?? 0) > 0 && (
+                      <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>{t.current}/{t.total}</span>
+                    )}
+                  </td>
+                  <td className="muted" style={{ fontSize: 12 }}>{ago(t.finishedAt || t.createdAt)}</td>
+                </tr>
+                {open && (
+                  <tr className="task-details-row">
+                    <td />
+                    <td colSpan={3}><ul className="task-details">{details.map((d, i) => <li key={i}>{d}</li>)}</ul></td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
