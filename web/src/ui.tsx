@@ -61,7 +61,8 @@ export function ErrorBanner({ message }: { message: string }) {
 export function gb(bytes: number): string {
   if (!bytes) return '0 GB'
   if (bytes < 1e9) return (bytes / 1e6).toFixed(0) + ' MB'
-  return (bytes / 1e9).toFixed(2) + ' GB'
+  if (bytes < 1e12) return (bytes / 1e9).toFixed(2) + ' GB'
+  return (bytes / 1e12).toFixed(2) + ' TB'
 }
 
 export function ago(iso: string): string {

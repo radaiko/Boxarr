@@ -106,3 +106,11 @@ func (s *Store) MarkAllNotificationsRead(ctx context.Context) error {
 	}
 	return nil
 }
+
+// DeleteAllNotifications clears the notification list.
+func (s *Store) DeleteAllNotifications(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM notification`); err != nil {
+		return fmt.Errorf("clearing notifications: %w", err)
+	}
+	return nil
+}

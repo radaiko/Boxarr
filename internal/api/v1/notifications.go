@@ -86,6 +86,15 @@ func (h *Handler) markAllNotificationsRead(w http.ResponseWriter, r *http.Reques
 	_, _ = w.Write([]byte(`{"ok":true}`))
 }
 
+func (h *Handler) clearNotifications(w http.ResponseWriter, r *http.Request) {
+	if err := h.deps.Store.DeleteAllNotifications(r.Context()); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "internal", "clearing notifications")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
 // notificationAction resolves an unknown_content notification (FR-NC-2):
 //   - ignore / adopt: mark the mount item known so it stops being flagged
 //   - delete: delete the download from TorBox + drop the mount-item row

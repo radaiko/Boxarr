@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getJSON, putJSON, postJSON } from '../api'
+import { getJSON, putJSON, postJSON, del } from '../api'
 import { Icon, Empty, Loading, ErrorBanner, ago } from '../ui'
 
 interface Note {
@@ -21,6 +21,7 @@ export function Notifications() {
 
   const markRead = async (id: number) => { await putJSON(`/notifications/${id}/read`, {}); reload() }
   const markAll = async () => { await putJSON('/notifications/read-all', {}); reload() }
+  const clearAll = async () => { await del('/notifications'); reload() }
   const act = async (id: number, action: string) => { await postJSON(`/notifications/${id}/action`, { action }); reload() }
 
   if (err) return <ErrorBanner message={err} />
@@ -30,7 +31,12 @@ export function Notifications() {
     <section>
       <div className="row-between" style={{ marginBottom: 18 }}>
         <span className="muted">{notes.filter((n) => !n.read).length} unread</span>
-        {notes.length > 0 && <button className="btn" onClick={() => void markAll()}><Icon name="check" /> Mark all read</button>}
+        {notes.length > 0 && (
+          <span style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={() => void markAll()}><Icon name="check" /> Mark all read</button>
+            <button className="btn btn-danger" onClick={() => void clearAll()}><Icon name="trash" /> Clear all</button>
+          </span>
+        )}
       </div>
       {notes.length === 0 ? (
         <Empty icon="notifications" title="All clear" hint="Grabs, imports, failures, and unknown content on the mount show up here." />

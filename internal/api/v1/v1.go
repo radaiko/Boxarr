@@ -115,6 +115,7 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/notifications/unread-count", h.unreadCount)
 	r.Put("/notifications/{id}/read", h.markNotificationRead)
 	r.Put("/notifications/read-all", h.markAllNotificationsRead)
+	r.Delete("/notifications", h.clearNotifications)
 	r.Post("/notifications/{id}/action", h.notificationAction)
 	return r
 }

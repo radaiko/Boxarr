@@ -319,7 +319,7 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "listing webdav items", err)
 		return
 	}
-	posters := h.posterByTitle(r.Context())
+	idx := h.catalogByTitle(r.Context())
 	cat := r.URL.Query().Get("category")
 	out := make([]webdavItemDTO, 0, len(items))
 	for _, it := range items {
@@ -330,8 +330,15 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		dto := toWebDAVDTO(it)
+		// For tracked items, trust the catalog's real type + poster over the
+		// filename guess — so a tracked anime shows under Anime, not Series.
 		if it.Known {
-			dto.PosterPath = posters[strings.ToLower(dto.Title)]
+			if c, ok := idx[strings.ToLower(dto.Title)]; ok {
+				dto.PosterPath = c.poster
+				if c.kind != "" {
+					dto.Kind = c.kind
+				}
+			}
 		}
 		out = append(out, dto)
 	}
@@ -359,22 +366,24 @@ func (h *Handler) activity(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, map[string]any{"downloads": downloads, "tasks": tasks})
 }
 
-// posterByTitle maps lower-cased catalog titles → poster path, so tracked mount
-// items (grouped by parsed title) can show their cover.
-func (h *Handler) posterByTitle(ctx context.Context) map[string]string {
-	m := map[string]string{}
+type catalogEntry struct{ poster, kind string }
+
+// catalogByTitle maps lower-cased catalog titles → {poster, kind}, so tracked
+// mount items can show their real cover + category (movie/series/anime).
+func (h *Handler) catalogByTitle(ctx context.Context) map[string]catalogEntry {
+	m := map[string]catalogEntry{}
 	if ms, err := h.deps.Store.ListMovies(ctx); err == nil {
 		for _, mv := range ms {
-			if mv.PosterPath != "" {
-				m[strings.ToLower(mv.Title)] = mv.PosterPath
-			}
+			m[strings.ToLower(mv.Title)] = catalogEntry{poster: mv.PosterPath, kind: "movie"}
 		}
 	}
 	if ss, err := h.deps.Store.ListSeries(ctx); err == nil {
 		for _, s := range ss {
-			if s.PosterPath != "" {
-				m[strings.ToLower(s.Title)] = s.PosterPath
+			kind := "series"
+			if s.SeriesType == "anime" {
+				kind = "anime"
 			}
+			m[strings.ToLower(s.Title)] = catalogEntry{poster: s.PosterPath, kind: kind}
 		}
 	}
 	return m
