@@ -210,6 +210,7 @@ a { color: var(--accent-2); text-decoration: none; }
 .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .status.available { color: var(--ok); border-color: #1f4a30; background: #102218; }
 .status.downloading { color: var(--info); border-color: #1d3a63; background: #0f1c30; }
+.status.queued { color: #b794f6; border-color: #3a2a5a; background: #181226; }
 .status.searching { color: var(--cyan); border-color: #14454c; background: #0c2226; }
 .status.wanted { color: var(--accent); border-color: #5a4015; background: #241a08; }
 .status.missing { color: var(--text-faint); }

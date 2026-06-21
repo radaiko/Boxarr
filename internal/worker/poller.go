@@ -197,46 +197,55 @@ func (w *Workers) reconcile(ctx context.Context, j *job.Job, rec torbox.UsenetDo
 		return reconcileSettled
 	}
 
-	if j.State == job.StateQueued {
-		j.State = job.StateDownloading
-		w.markMediaDownloading(ctx, j) // reflect on the catalog item (backstop for all grab paths)
+	if j.State == job.StateQueued && j.DownloadedBytes > 0 {
+		j.State = job.StateDownloading // only flip once bytes are actually flowing
 	}
+	w.syncMediaFromJob(ctx, j) // reflect queued/downloading on the catalog item
 	if err := w.store.UpdateJob(ctx, j); err != nil {
 		log.Error("persisting progress", "error", err)
 	}
 	return reconcileOngoing
 }
 
-// markMediaDownloading flips a linked movie/episode from wanted/searching to
-// downloading so the UI stops showing "searching" once TorBox is pulling it.
-func (w *Workers) markMediaDownloading(ctx context.Context, j *job.Job) {
+// mediaStatusForJob maps a job's lifecycle state to the catalog display status,
+// mirroring the Activity queue's queued/downloading split. It returns ("", false)
+// for states the importer/healer own (completed/imported/etc.).
+func mediaStatusForJob(state job.State) (media.MediaStatus, bool) {
+	switch state {
+	case job.StatePending, job.StateSubmitting, job.StateQueued:
+		return media.MediaQueued, true
+	case job.StateDownloading, job.StateSeeding:
+		return media.MediaDownloading, true
+	default:
+		return "", false
+	}
+}
+
+// syncMediaFromJob reflects an in-flight job's state on its linked movie/episode
+// (queued vs downloading) so the library matches the Activity queue. It never
+// overrides an already-available item and only writes on an actual change.
+func (w *Workers) syncMediaFromJob(ctx context.Context, j *job.Job) {
 	if j.MediaRef == 0 {
 		return
 	}
-	dl := func(s media.MediaStatus, hasFile bool) (media.MediaStatus, bool) {
-		if hasFile || s == media.MediaAvailable || s == media.MediaDownloading {
-			return s, false
-		}
-		return media.MediaDownloading, true
+	want, ok := mediaStatusForJob(j.State)
+	if !ok {
+		return
 	}
 	switch j.MediaType {
 	case "movie":
 		m, err := w.store.GetMovie(ctx, j.MediaRef)
-		if err != nil {
+		if err != nil || m.HasFile || m.Status == media.MediaAvailable || m.Status == want {
 			return
 		}
-		if ns, changed := dl(m.Status, m.HasFile); changed {
-			m.Status = ns
-			_ = w.store.UpdateMovie(ctx, m)
-		}
+		m.Status = want
+		_ = w.store.UpdateMovie(ctx, m)
 	case "episode":
 		ep, err := w.store.GetEpisode(ctx, j.MediaRef)
-		if err != nil {
+		if err != nil || ep.HasFile || ep.Status == media.MediaAvailable || ep.Status == want {
 			return
 		}
-		if _, changed := dl(ep.Status, ep.HasFile); changed {
-			_ = w.store.SetEpisodeStatus(ctx, ep.ID, media.MediaDownloading)
-		}
+		_ = w.store.SetEpisodeStatus(ctx, ep.ID, want)
 	}
 }
 

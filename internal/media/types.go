@@ -13,7 +13,8 @@ type MediaStatus string
 const (
 	MediaWanted      MediaStatus = "wanted"         // monitored, eligible (aired/released), no file
 	MediaSearching   MediaStatus = "searching"      // a search/grab is in flight
-	MediaDownloading MediaStatus = "downloading"    // a linked job is queued/downloading/seeding
+	MediaQueued      MediaStatus = "queued"         // grabbed; job queued on TorBox, not yet downloading
+	MediaDownloading MediaStatus = "downloading"    // a linked job is actively downloading/seeding
 	MediaAvailable   MediaStatus = "available"      // imported; library symlink present
 	MediaMissing     MediaStatus = "missing"        // monitored but not yet eligible, or unmonitored
 	MediaExpired     MediaStatus = "expired_broken" // was available; WebDAV target gone (heal candidate)

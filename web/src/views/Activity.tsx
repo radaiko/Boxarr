@@ -18,7 +18,7 @@ interface ActivityResp { downloads: Download[]; tasks: BgTask[]; history: Histor
 
 const DL_PILL: Record<string, string> = {
   downloading: 'downloading', seeding: 'downloading', completed: 'available',
-  queued: 'wanted', pending: 'wanted', submitting: 'searching', healing: 'searching',
+  queued: 'queued', pending: 'queued', submitting: 'queued', healing: 'searching',
   imported: 'available', failed: 'broken', heal_failed: 'broken', manually_resolved: 'idle',
 }
 const TASK_PILL: Record<string, string> = { running: 'searching', done: 'available', error: 'broken', queued: 'wanted' }

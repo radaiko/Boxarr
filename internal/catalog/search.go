@@ -64,9 +64,10 @@ func (s *Service) SearchWantedForMovie(ctx context.Context, movieID int64) error
 		return err
 	}
 	m.JobID = jb.ID
-	// A release was grabbed and a job created — it's downloading now, not searching.
+	// A release was grabbed and a job created — it's queued on TorBox now (the
+	// poller flips it to downloading once it starts), no longer just searching.
 	if m.Status != media.MediaAvailable {
-		m.Status = media.MediaDownloading
+		m.Status = media.MediaQueued
 	}
 	return s.store.UpdateMovie(ctx, m)
 }
@@ -112,7 +113,7 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 		}
 		ep.JobID = jb.ID
 		if ep.Status != media.MediaAvailable {
-			_ = s.store.SetEpisodeStatus(ctx, ep.ID, media.MediaDownloading)
+			_ = s.store.SetEpisodeStatus(ctx, ep.ID, media.MediaQueued)
 		}
 	}
 	return nil

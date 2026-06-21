@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/media"
 	"github.com/radaiko/boxarr/internal/release"
 )
@@ -87,5 +88,27 @@ func TestTVLinkPathMultiEpisodeRange(t *testing.T) {
 	// Single episode: no range suffix.
 	if p := w.tvLinkPath("/lib", "Show (2020)", "Show", eps[:1], ".mkv"); filepath.Base(p) != "Show - S01E01.mkv" {
 		t.Errorf("single-ep base = %q", filepath.Base(p))
+	}
+}
+
+func TestMediaStatusForJob(t *testing.T) {
+	cases := []struct {
+		state job.State
+		want  media.MediaStatus
+		ok    bool
+	}{
+		{job.StatePending, media.MediaQueued, true},
+		{job.StateSubmitting, media.MediaQueued, true},
+		{job.StateQueued, media.MediaQueued, true},
+		{job.StateDownloading, media.MediaDownloading, true},
+		{job.StateSeeding, media.MediaDownloading, true},
+		{job.StateImported, "", false},
+		{job.StateFailed, "", false},
+	}
+	for _, c := range cases {
+		got, ok := mediaStatusForJob(c.state)
+		if ok != c.ok || got != c.want {
+			t.Errorf("mediaStatusForJob(%s) = (%q,%v), want (%q,%v)", c.state, got, ok, c.want, c.ok)
+		}
 	}
 }
