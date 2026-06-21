@@ -17,6 +17,8 @@ const PATHS: Record<string, ReactNode> = {
   download: <><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></>,
   refresh: <><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5" /></>,
   film: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M8 4v16M16 4v16" /></>,
+  copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>,
+  key: <><circle cx="7.5" cy="15.5" r="4.5" /><path d="m10.5 12.5 9-9M17 6l3 3M14 9l2 2" /></>,
 }
 
 export function Icon({ name }: { name: string }) {

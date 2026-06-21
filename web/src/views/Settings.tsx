@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getJSON, putJSON, postJSON, setApiKey } from '../api'
+import { getJSON, putJSON, postJSON, setApiKey, getApiKey } from '../api'
 import { Icon, Loading, ErrorBanner } from '../ui'
 
 interface SettingsResponse {
@@ -115,10 +115,22 @@ const groupService: Record<string, { svc: string; body: (v: (k: string) => strin
   Plex: { svc: 'plex', body: (v) => ({ url: v('plex.url'), token: v('plex.token') }) },
 }
 
+// Tabs group the settings like Sonarr/Radarr instead of one long page.
+const TABS: { id: string; groups: string[] }[] = [
+  { id: 'Connections', groups: ['TorBox', 'Prowlarr', 'TMDB', 'TVDB', 'Plex'] },
+  { id: 'Requests', groups: [] }, // special Seerr key panel
+  { id: 'Library', groups: ['Library & WebDAV'] },
+  { id: 'Downloads', groups: ['Intervals & automation'] },
+  { id: 'Selection', groups: ['Release selection — filters', 'Release selection — weights'] },
+  { id: 'General', groups: [] }, // special web-UI key panel
+]
+const byTitle = Object.fromEntries(groups.map((g) => [g.title, g]))
+
 export function Settings() {
   const [data, setData] = useState<SettingsResponse | null>(null)
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [tests, setTests] = useState<Record<string, string>>({})
+  const [tab, setTab] = useState('Connections')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
 
@@ -134,23 +146,17 @@ export function Settings() {
 
   function valueOf(key: string, secret?: boolean): string {
     if (key in edits) return edits[key]
-    if (secret) return '' // never prefill secrets
+    if (secret) return ''
     return data!.effective[key] ?? data!.settings[key] ?? ''
   }
 
   async function save() {
     setMsg('Saving…')
     try {
-      // If the UI API key changed, persist it locally first so the very next
-      // request (the reload below) authenticates instead of locking us out.
       if ('api.key' in edits) setApiKey(edits['api.key'])
       const updated = await putJSON<SettingsResponse>('/settings', { settings: edits })
-      setData(updated)
-      setEdits({})
-      setMsg('Saved — applied immediately (no restart).')
-    } catch (e) {
-      setMsg('Save failed: ' + String(e))
-    }
+      setData(updated); setEdits({}); setMsg('Saved.')
+    } catch (e) { setMsg('Save failed: ' + String(e)) }
   }
 
   async function test(svc: string, body: Record<string, string>) {
@@ -158,74 +164,144 @@ export function Settings() {
     try {
       const r = await postJSON<{ ok: boolean; detail: string }>(`/settings/test/${svc}`, body)
       setTests((t) => ({ ...t, [svc]: (r.ok ? '✓ ' : '✗ ') + r.detail }))
-    } catch (e) {
-      setTests((t) => ({ ...t, [svc]: '✗ ' + String(e) }))
-    }
+    } catch (e) { setTests((t) => ({ ...t, [svc]: '✗ ' + String(e) })) }
   }
 
+  // Persist a single key immediately (used by the one-click key generators).
+  async function setOne(key: string, value: string) {
+    setMsg('Saving…')
+    try {
+      if (key === 'api.key') setApiKey(value)
+      const updated = await putJSON<SettingsResponse>('/settings', { settings: { [key]: value } })
+      setData(updated); setMsg('Saved.')
+    } catch (e) { setMsg('Save failed: ' + String(e)) }
+  }
+
+  function renderGroup(g: typeof groups[number]) {
+    const gs = groupService[g.title]
+    const svcStatus = gs ? data!.configured[gs.svc] : undefined
+    return (
+      <div key={g.title} className="fieldset">
+        <div className="legend" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {g.title}
+          {svcStatus !== undefined && (
+            <span className={`status ${svcStatus ? 'available' : 'missing'}`} style={{ marginLeft: 'auto' }}>
+              {svcStatus ? 'connected' : 'not set'}
+            </span>
+          )}
+        </div>
+        {g.fields.map((f) => (
+          <div key={f.key} className={f.bool ? 'field field-row' : 'field'}>
+            {f.bool ? (
+              <>
+                <input id={f.key} type="checkbox" checked={valueOf(f.key) === 'true'}
+                  onChange={(e) => setEdits({ ...edits, [f.key]: e.target.checked ? 'true' : 'false' })} />
+                <label htmlFor={f.key} style={{ margin: 0 }}>{f.label}</label>
+              </>
+            ) : (
+              <>
+                <label htmlFor={f.key}>{f.label}</label>
+                <input id={f.key} className="input" type={f.secret ? 'password' : 'text'}
+                  placeholder={f.secret ? secretPlaceholder(f.key, data!) : ''}
+                  value={valueOf(f.key, f.secret)}
+                  onChange={(e) => setEdits({ ...edits, [f.key]: e.target.value })} />
+              </>
+            )}
+          </div>
+        ))}
+        {gs && (
+          <div className="test-line">
+            <button className="btn btn-sm" onClick={() => void test(gs.svc, gs.body((k) => edits[k] ?? ''))}>
+              <Icon name="refresh" /> Test connection
+            </button>
+            <span className={testTone(tests[gs.svc])}>{tests[gs.svc] ?? ''}</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const seerrKey = edits['seerr.api_keys'] ?? data.effective['seerr.api_keys'] ?? ''
+  const appKey = getApiKey()
   const dirty = Object.keys(edits).length > 0
+  const active = TABS.find((t) => t.id === tab) ?? TABS[0]
 
   return (
     <section>
-      <p className="muted" style={{ marginTop: 0, marginBottom: 18 }}>
-        Everything Boxarr needs is configured here — no environment variables required. Changes apply immediately.
-      </p>
-      <div className="settings-grid">
-        {groups.map((g) => {
-          const gs = groupService[g.title]
-          const svcStatus = gs ? data!.configured[gs.svc] : undefined
-          return (
-            <div key={g.title} className="fieldset">
-              <div className="legend" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {g.title}
-                {svcStatus !== undefined && (
-                  <span className={`status ${svcStatus ? 'available' : 'missing'}`} style={{ marginLeft: 'auto' }}>
-                    {svcStatus ? 'connected' : 'not set'}
-                  </span>
-                )}
-              </div>
-              {g.fields.map((f) => (
-                <div key={f.key} className={f.bool ? 'field field-row' : 'field'}>
-                  {f.bool ? (
-                    <>
-                      <input id={f.key} type="checkbox" checked={valueOf(f.key) === 'true'}
-                        onChange={(e) => setEdits({ ...edits, [f.key]: e.target.checked ? 'true' : 'false' })} />
-                      <label htmlFor={f.key} style={{ margin: 0 }}>{f.label}</label>
-                    </>
-                  ) : (
-                    <>
-                      <label htmlFor={f.key}>{f.label}</label>
-                      <input id={f.key} className="input" type={f.secret ? 'password' : 'text'}
-                        placeholder={f.secret ? secretPlaceholder(f.key, data!) : ''}
-                        value={valueOf(f.key, f.secret)}
-                        onChange={(e) => setEdits({ ...edits, [f.key]: e.target.value })} />
-                    </>
-                  )}
-                </div>
-              ))}
-              {gs && (
-                <div className="test-line">
-                  {/* Send only edited values; the server falls back to saved ones
-                      (so unedited secrets are never sent as the redacted mask). */}
-                  <button className="btn btn-sm" onClick={() => void test(gs.svc, gs.body((k) => edits[k] ?? ''))}>
-                    <Icon name="refresh" /> Test connection
-                  </button>
-                  <span className={testTone(tests[gs.svc])}>{tests[gs.svc] ?? ''}</span>
-                </div>
-              )}
+      <div className="tabs">
+        {TABS.map((t) => (
+          <button key={t.id} className={`tab${t.id === tab ? ' active' : ''}`}
+            onClick={() => { setTab(t.id); setMsg('') }}>{t.id}</button>
+        ))}
+      </div>
+
+      {tab === 'Requests' ? (
+        <div className="fieldset" style={{ maxWidth: 720 }}>
+          <div className="legend">Requests · Overseerr / Jellyseerr</div>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Boxarr emulates Sonarr &amp; Radarr so Seerr can send requests straight in. Seerr authenticates with this one key — generate it here, then paste it into Seerr.
+          </p>
+          {seerrKey ? (
+            <div className="keybox">
+              <code>{seerrKey}</code>
+              <button className="btn btn-sm" onClick={() => void copy(seerrKey)}><Icon name="copy" /> Copy</button>
+              <button className="btn btn-sm" onClick={() => void setOne('seerr.api_keys', genKey())}><Icon name="refresh" /> Regenerate</button>
             </div>
-          )
-        })}
-      </div>
-      <div className="save-bar">
-        <button className="btn btn-primary" onClick={() => void save()} disabled={!dirty}>
-          <Icon name="check" /> Save changes
-        </button>
-        {dirty && !msg && <span className="toast">{Object.keys(edits).length} unsaved</span>}
-        {msg && <span className={`toast${msg.startsWith('Saved') ? ' ok' : ''}`}>{msg}</span>}
-      </div>
+          ) : (
+            <button className="btn btn-primary" onClick={() => void setOne('seerr.api_keys', genKey())}>
+              <Icon name="key" /> Generate API key
+            </button>
+          )}
+          <div className="hint-block">
+            In <strong>Seerr → Settings → Services</strong>, add both with this key:<br />
+            Sonarr → Server <code>http://boxarr:8080/sonarr</code><br />
+            Radarr → Server <code>http://boxarr:8080/radarr</code><br />
+            <span className="muted">Use Boxarr’s address on your Docker network (the service/container name), not the browser URL.</span>
+          </div>
+          {msg && <p className={`toast${msg === 'Saved.' ? ' ok' : ''}`} style={{ marginTop: 14 }}>{msg}</p>}
+        </div>
+      ) : tab === 'General' ? (
+        <div className="fieldset" style={{ maxWidth: 720 }}>
+          <div className="legend">Web UI access</div>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Secures Boxarr’s own web UI &amp; API. Leave it open on a trusted LAN, or set a key before exposing Boxarr. This is <strong>not</strong> the key Seerr uses.
+          </p>
+          <div className="keybox">
+            <code>{appKey || '(open — anyone on the network can access)'}</code>
+            {appKey && <button className="btn btn-sm" onClick={() => void copy(appKey)}><Icon name="copy" /> Copy</button>}
+            <button className="btn btn-sm" onClick={() => void setOne('api.key', genKey())}>
+              <Icon name="key" /> {appKey ? 'Regenerate' : 'Generate key'}
+            </button>
+            {appKey && <button className="btn btn-sm btn-danger" onClick={() => void setOne('api.key', '')}>Remove</button>}
+          </div>
+          {msg && <p className={`toast${msg === 'Saved.' ? ' ok' : ''}`} style={{ marginTop: 14 }}>{msg}</p>}
+        </div>
+      ) : (
+        <>
+          <div className="settings-grid">
+            {active.groups.map((title) => byTitle[title] && renderGroup(byTitle[title]))}
+          </div>
+          <div className="save-bar">
+            <button className="btn btn-primary" onClick={() => void save()} disabled={!dirty}>
+              <Icon name="check" /> Save changes
+            </button>
+            {dirty && msg === '' && <span className="toast">{Object.keys(edits).length} unsaved</span>}
+            {msg && <span className={`toast${msg === 'Saved.' ? ' ok' : ''}`}>{msg}</span>}
+          </div>
+        </>
+      )}
     </section>
   )
+}
+
+function genKey(): string {
+  const a = new Uint8Array(24)
+  crypto.getRandomValues(a)
+  return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function copy(text: string): void {
+  void navigator.clipboard?.writeText(text)
 }
 
 function testTone(v?: string): string {
