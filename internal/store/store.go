@@ -7,6 +7,9 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/pressly/goose/v3"
@@ -26,6 +29,17 @@ type Store struct {
 // pending migrations, and returns a ready Store. All transactions use
 // BEGIN IMMEDIATE to serialize concurrent writers.
 func Open(ctx context.Context, path string) (*Store, error) {
+	// Create the parent dir and verify it's writable up front: a bind-mounted
+	// /config owned by a different uid is the most common deploy failure, and
+	// SQLite's bare "unable to open database file (14)" is unhelpful. Surface an
+	// actionable message (the dir, its owner, and our uid) instead.
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating database directory %q: %w", dir, err)
+	}
+	if err := checkDirWritable(dir); err != nil {
+		return nil, err
+	}
 	dsn := fmt.Sprintf(
 		"file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_txlock=immediate",
 		path)
@@ -43,6 +57,27 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 	return &Store{db: db}, nil
+}
+
+// checkDirWritable verifies the process can create files in dir, returning an
+// actionable error (the dir, its owner uid/gid, and our uid) when it cannot —
+// the typical cause is a bind-mounted /config owned by a different user.
+func checkDirWritable(dir string) error {
+	f, err := os.CreateTemp(dir, ".boxarr-writetest-*")
+	if err == nil {
+		name := f.Name()
+		_ = f.Close()
+		_ = os.Remove(name)
+		return nil
+	}
+	hint := ""
+	if info, serr := os.Stat(dir); serr == nil {
+		if st, ok := info.Sys().(*syscall.Stat_t); ok {
+			hint = fmt.Sprintf(" — it is owned by uid %d:gid %d but this process runs as uid %d:gid %d; chown the volume to the container user (e.g. `chown -R %d:%d <host path>`)",
+				st.Uid, st.Gid, os.Getuid(), os.Getgid(), os.Getuid(), os.Getgid())
+		}
+	}
+	return fmt.Errorf("database directory %q is not writable%s: %w", dir, hint, err)
 }
 
 // migrate applies embedded goose migrations.
