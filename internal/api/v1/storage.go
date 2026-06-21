@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -67,10 +68,11 @@ type webdavItemDTO struct {
 	LastSeen   string `json:"lastSeen"`
 	// Parsed from the folder name so the UI can group by title (kind = movie |
 	// series | anime | unknown).
-	Kind    string `json:"kind"`
-	Title   string `json:"title"`
-	Season  int    `json:"season,omitempty"`
-	Episode int    `json:"episode,omitempty"`
+	Kind       string `json:"kind"`
+	Title      string `json:"title"`
+	Season     int    `json:"season,omitempty"`
+	Episode    int    `json:"episode,omitempty"`
+	PosterPath string `json:"posterPath,omitempty"` // catalog poster for tracked items
 }
 
 func toWebDAVDTO(it *webdav.WebDAVItem) webdavItemDTO {
@@ -251,6 +253,7 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "listing webdav items", err)
 		return
 	}
+	posters := h.posterByTitle(r.Context())
 	cat := r.URL.Query().Get("category")
 	out := make([]webdavItemDTO, 0, len(items))
 	for _, it := range items {
@@ -260,7 +263,32 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 		if cat != "" && it.Category != cat {
 			continue
 		}
-		out = append(out, toWebDAVDTO(it))
+		dto := toWebDAVDTO(it)
+		if it.Known {
+			dto.PosterPath = posters[strings.ToLower(dto.Title)]
+		}
+		out = append(out, dto)
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
+}
+
+// posterByTitle maps lower-cased catalog titles → poster path, so tracked mount
+// items (grouped by parsed title) can show their cover.
+func (h *Handler) posterByTitle(ctx context.Context) map[string]string {
+	m := map[string]string{}
+	if ms, err := h.deps.Store.ListMovies(ctx); err == nil {
+		for _, mv := range ms {
+			if mv.PosterPath != "" {
+				m[strings.ToLower(mv.Title)] = mv.PosterPath
+			}
+		}
+	}
+	if ss, err := h.deps.Store.ListSeries(ctx); err == nil {
+		for _, s := range ss {
+			if s.PosterPath != "" {
+				m[strings.ToLower(s.Title)] = s.PosterPath
+			}
+		}
+	}
+	return m
 }
