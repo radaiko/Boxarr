@@ -122,10 +122,18 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 	unread, _ := h.deps.Store.UnreadCount(ctx)
 	active, _ := h.deps.Store.CountJobsByState(ctx,
 		job.StateSubmitting, job.StateQueued, job.StateDownloading, job.StateSeeding)
+	// Anime is a series subtype; count it as its own library section.
+	anime := 0
+	for _, s := range series {
+		if s.SeriesType == "anime" {
+			anime++
+		}
+	}
 	resp := map[string]any{
 		"version": h.deps.Version,
 		"counts": map[string]any{
-			"series":              len(series),
+			"series":              len(series) - anime,
+			"anime":               anime,
 			"movies":              len(movies),
 			"activeJobs":          active,
 			"unreadNotifications": unread,

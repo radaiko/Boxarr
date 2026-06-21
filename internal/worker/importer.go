@@ -91,8 +91,13 @@ func (w *Workers) maybePlexScan(ctx context.Context, dir, kind string) {
 		return
 	}
 	section := w.set.PlexMovieSection()
-	if kind == "tv" {
+	switch kind {
+	case "tv":
 		section = w.set.PlexTVSection()
+	case "anime":
+		if section = w.set.PlexAnimeSection(); section == "" {
+			section = w.set.PlexTVSection() // fall back to the TV section
+		}
 	}
 	if section == "" {
 		return

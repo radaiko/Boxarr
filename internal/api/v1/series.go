@@ -152,9 +152,10 @@ func (h *Handler) lookupSeries(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) addSeries(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		TMDBID           int64 `json:"tmdbId"`
-		Monitored        *bool `json:"monitored"`
-		MonitoredSeasons []int `json:"monitoredSeasons"`
+		TMDBID           int64  `json:"tmdbId"`
+		Monitored        *bool  `json:"monitored"`
+		MonitoredSeasons []int  `json:"monitoredSeasons"`
+		SeriesType       string `json:"seriesType"` // "anime" | "standard" (default)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TMDBID == 0 {
 		h.writeError(w, http.StatusBadRequest, "bad_request", "tmdbId is required")
@@ -164,7 +165,7 @@ func (h *Handler) addSeries(w http.ResponseWriter, r *http.Request) {
 	if body.Monitored != nil {
 		monitored = *body.Monitored
 	}
-	s, err := h.deps.Catalog.AddSeries(r.Context(), body.TMDBID, monitored, body.MonitoredSeasons)
+	s, err := h.deps.Catalog.AddSeries(r.Context(), body.TMDBID, monitored, body.MonitoredSeasons, body.SeriesType)
 	if errors.Is(err, catalog.ErrAlreadyExists) {
 		h.writeJSON(w, http.StatusConflict, map[string]any{
 			"error": map[string]any{"code": "conflict", "message": "series already in catalog",

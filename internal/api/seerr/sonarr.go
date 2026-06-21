@@ -84,7 +84,7 @@ func (h *Handler) addSeries(w http.ResponseWriter, r *http.Request) {
 			monitoredSeasons = append(monitoredSeasons, s.SeasonNumber)
 		}
 	}
-	sr, err := h.deps.Catalog.AddSeries(ctx, tmdbID, true, monitoredSeasons)
+	sr, err := h.deps.Catalog.AddSeries(ctx, tmdbID, true, monitoredSeasons, "standard")
 	if err != nil && !errors.Is(err, catalog.ErrAlreadyExists) {
 		h.deps.Logger.Error("seerr: add series", "error", err)
 		h.writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})

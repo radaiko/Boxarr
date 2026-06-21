@@ -29,7 +29,7 @@ func (s *Service) ResolveAdopt(ctx context.Context, name string) (string, int64,
 		if len(cands) == 0 {
 			return "", 0, fmt.Errorf("no TMDB series match for %q", term)
 		}
-		sr, err := s.AddSeries(ctx, cands[0].TMDBID, true, nil)
+		sr, err := s.AddSeries(ctx, cands[0].TMDBID, true, nil, "standard")
 		if err != nil && !errors.Is(err, ErrAlreadyExists) {
 			return "", 0, fmt.Errorf("adding series: %w", err)
 		}

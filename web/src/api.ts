@@ -127,6 +127,7 @@ export interface Series {
   year: number
   monitored: boolean
   status: string
+  seriesType?: string
   posterPath?: string
   overview?: string
   seasons?: Season[]

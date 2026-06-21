@@ -11,6 +11,7 @@ import { WebDAV } from './views/WebDAV'
 const NAV = [
   { id: 'Movies', icon: 'movies', group: 'Library' },
   { id: 'Series', icon: 'series', group: 'Library' },
+  { id: 'Anime', icon: 'anime', group: 'Library' },
   { id: 'WebDAV', icon: 'webdav', group: 'System' },
   { id: 'Storage', icon: 'storage', group: 'System' },
   { id: 'Notifications', icon: 'notifications', group: 'Activity' },
@@ -20,7 +21,7 @@ type View = (typeof NAV)[number]['id']
 
 interface Status {
   version: string
-  counts: { movies: number; series: number; activeJobs: number; unreadNotifications: number }
+  counts: { movies: number; series: number; anime: number; activeJobs: number; unreadNotifications: number }
 }
 
 export function App() {
@@ -39,6 +40,7 @@ export function App() {
   const countFor = (id: View): number | undefined => {
     if (id === 'Movies') return counts?.movies
     if (id === 'Series') return counts?.series
+    if (id === 'Anime') return counts?.anime
     if (id === 'Notifications') return counts?.unreadNotifications
     return undefined
   }
@@ -83,6 +85,7 @@ export function App() {
         <main className="content">
           {view === 'Movies' && <Movies />}
           {view === 'Series' && <Series />}
+          {view === 'Anime' && <Series anime />}
           {view === 'WebDAV' && <WebDAV />}
           {view === 'Storage' && <Storage />}
           {view === 'Notifications' && <Notifications />}

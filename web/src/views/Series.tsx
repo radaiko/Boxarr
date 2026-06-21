@@ -3,34 +3,39 @@ import { getJSON, postJSON, posterURL, type Series as SeriesT, type SeriesCandid
 import { Icon, Status, Empty, Loading, ErrorBanner, initials } from '../ui'
 import { SeriesDetail } from './SeriesDetail'
 
-export function Series() {
+export function Series({ anime = false }: { anime?: boolean }) {
   const [series, setSeries] = useState<SeriesT[] | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState('')
 
+  const noun = anime ? 'anime' : 'series'
+  const Noun = anime ? 'anime' : 'series'
+
   function reload() {
     getJSON<ListResponse<SeriesT>>('/series')
-      .then((r) => setSeries(r.items))
+      .then((r) => setSeries(r.items.filter((s) => (s.seriesType === 'anime') === anime)))
       .catch((e: unknown) => setErr(String(e)))
   }
-  useEffect(reload, [])
+  useEffect(reload, [anime])
 
   if (err) return <ErrorBanner message={err} />
   if (selected !== null) return <SeriesDetail id={selected} onBack={() => { setSelected(null); reload() }} />
-  if (adding) return <AddSeries onDone={() => { setAdding(false); reload() }} />
+  if (adding) return <AddSeries anime={anime} onDone={() => { setAdding(false); reload() }} />
   if (!series) return <Loading />
 
   return (
     <section>
       <div className="row-between" style={{ marginBottom: 18 }}>
-        <span className="muted">{series.length} {series.length === 1 ? 'series' : 'series'}</span>
-        <button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" /> Add series</button>
+        <span className="muted">{series.length} {Noun}</span>
+        <button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" /> Add {noun}</button>
       </div>
       {series.length === 0 ? (
-        <Empty icon="series" title="No series yet"
-          hint="Add a show — Boxarr tracks each season and grabs episodes as they air."
-          action={<button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" /> Add series</button>} />
+        <Empty icon={anime ? 'anime' : 'series'} title={`No ${noun} yet`}
+          hint={anime
+            ? 'Add an anime — Boxarr tracks seasons and files it in your anime library.'
+            : 'Add a show — Boxarr tracks each season and grabs episodes as they air.'}
+          action={<button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" /> Add {noun}</button>} />
       ) : (
         <div className="poster-grid">
           {series.map((s) => (
@@ -53,7 +58,7 @@ export function Series() {
   )
 }
 
-function AddSeries({ onDone }: { onDone: () => void }) {
+function AddSeries({ anime, onDone }: { anime: boolean; onDone: () => void }) {
   const [term, setTerm] = useState('')
   const [results, setResults] = useState<SeriesCandidate[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -69,7 +74,7 @@ function AddSeries({ onDone }: { onDone: () => void }) {
     }
   }
   async function add(c: SeriesCandidate) {
-    await postJSON('/series', { tmdbId: c.tmdbId })
+    await postJSON('/series', { tmdbId: c.tmdbId, seriesType: anime ? 'anime' : 'standard' })
     onDone()
   }
 

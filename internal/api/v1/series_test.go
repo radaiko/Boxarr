@@ -48,7 +48,7 @@ func newV1Series(t *testing.T) (http.Handler, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	set := mkSettings(t, st, &config.Config{TVLibraryRoot: "/data/tv"})
+	set := mkSettings(t, st, &config.Config{TVLibraryRoot: "/data/tv", AnimeLibraryRoot: "/data/anime"})
 	_ = set.Set(context.Background(), settings.KeyTMDBBaseURL, fakeTMDBSeries(t).URL)
 	cat := catalog.New(st, set)
 	h := NewHandler(Deps{Store: st, Settings: set, Catalog: cat,
@@ -88,6 +88,23 @@ func TestSeriesAddPersistsSeasonsAndEpisodes(t *testing.T) {
 	// Duplicate add → 409.
 	if rec := req(t, h, http.MethodPost, "/series", "", "127.0.0.1:1", `{"tmdbId":1396}`); rec.Code != http.StatusConflict {
 		t.Errorf("duplicate add should 409, got %d", rec.Code)
+	}
+}
+
+func TestAddAnimeSeriesUsesAnimeRoot(t *testing.T) {
+	h, st := newV1Series(t)
+	rec := req(t, h, http.MethodPost, "/series", "", "127.0.0.1:1", `{"tmdbId":1396,"seriesType":"anime"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add anime: %d body=%s", rec.Code, rec.Body.String())
+	}
+	var sd seriesDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &sd)
+	if sd.SeriesType != "anime" {
+		t.Fatalf("seriesType = %q, want anime", sd.SeriesType)
+	}
+	sr, _ := st.GetSeries(context.Background(), sd.ID)
+	if sr.RootFolderPath != "/data/anime" {
+		t.Errorf("anime series root = %q, want /data/anime", sr.RootFolderPath)
 	}
 }
 

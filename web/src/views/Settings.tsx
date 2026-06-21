@@ -41,6 +41,7 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
       { key: 'plex.token', label: 'X-Plex-Token', secret: true },
       { key: 'plex.movie_section', label: 'Movie library section ID', placeholder: '1' },
       { key: 'plex.tv_section', label: 'TV library section ID', placeholder: '2' },
+      { key: 'plex.anime_section', label: 'Anime library section ID', placeholder: '3' },
     ],
   },
   { title: 'Seerr (Overseerr/Jellyseerr)', fields: [{ key: 'seerr.api_keys', label: 'API keys (comma-separated)', secret: true }] },
@@ -52,6 +53,7 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
       { key: 'webdav.torrent_subpath', label: 'Torrent subpath' },
       { key: 'library.movie_root', label: 'Movie library root' },
       { key: 'library.tv_root', label: 'TV library root' },
+      { key: 'library.anime_root', label: 'Anime library root' },
     ],
   },
   {

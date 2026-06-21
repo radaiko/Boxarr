@@ -59,6 +59,7 @@ type Config struct {
 	PlexToken        string        `envconfig:"PLEX_TOKEN"`
 	PlexMovieSection string        `envconfig:"PLEX_MOVIE_SECTION"`
 	PlexTVSection    string        `envconfig:"PLEX_TV_SECTION"`
+	PlexAnimeSection string        `envconfig:"PLEX_ANIME_SECTION"`
 	PlexScanTimeout  time.Duration `envconfig:"PLEX_SCAN_TIMEOUT" default:"60s"`
 
 	// ── Seerr emulation inbound keys (NEW — 05) ──
@@ -67,6 +68,7 @@ type Config struct {
 	// ── Library roots (NEW — Plex-standard layout; supersede SymlinkRoot in Phase 1) ──
 	MovieLibraryRoot string `envconfig:"MOVIE_LIBRARY_ROOT" default:"/data/movies"`
 	TVLibraryRoot    string `envconfig:"TV_LIBRARY_ROOT" default:"/data/tv"`
+	AnimeLibraryRoot string `envconfig:"ANIME_LIBRARY_ROOT" default:"/data/anime"`
 
 	// ── Same-path escape hatch (NEW — 03 Plex) ──
 	HostToPlexPathPrefix string `envconfig:"HOST_TO_PLEX_PATH_PREFIX"`

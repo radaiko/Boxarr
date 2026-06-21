@@ -82,7 +82,7 @@ func (s *Service) markSeriesInLibrary(ctx context.Context, c *SeriesCandidate) {
 // AddSeries ingests a series by TMDB id (resolving TVDB cross-id), persisting
 // its seasons and episodes from TMDB. monitoredSeasons (nil = all aired seasons)
 // controls which seasons are monitored. Returns the created series.
-func (s *Service) AddSeries(ctx context.Context, tmdbID int64, monitored bool, monitoredSeasons []int) (*media.Series, error) {
+func (s *Service) AddSeries(ctx context.Context, tmdbID int64, monitored bool, monitoredSeasons []int, seriesType string) (*media.Series, error) {
 	if existing, _ := s.store.GetSeriesByTMDB(ctx, tmdbID); existing != nil {
 		return existing, ErrAlreadyExists
 	}
@@ -90,12 +90,20 @@ func (s *Service) AddSeries(ctx context.Context, tmdbID int64, monitored bool, m
 	if err != nil {
 		return nil, fmt.Errorf("tmdb tv details: %w", err)
 	}
+	// Anime is a series subtype with its own library root; everything else is
+	// "standard" and lands in the TV library.
+	root := s.set.TVLibraryRoot()
+	if seriesType != "anime" {
+		seriesType = "standard"
+	} else {
+		root = s.set.AnimeLibraryRoot()
+	}
 	sr := &media.Series{
 		TMDBID: int64(d.ID), TVDBID: int64(d.ExternalIDs.TVDBID), IMDBID: d.ExternalIDs.IMDBID,
 		Title: d.Name, SortTitle: strings.ToLower(d.Name), Year: yearOf(d.FirstAirDate),
-		Overview: d.Overview, SeriesType: "standard", TMDBStatus: d.Status,
+		Overview: d.Overview, SeriesType: seriesType, TMDBStatus: d.Status,
 		Monitored: monitored, SeasonFolder: true, QualityProfileID: 1,
-		RootFolderPath: s.set.TVLibraryRoot(), PosterPath: d.PosterPath, BackdropPath: d.BackdropPath,
+		RootFolderPath: root, PosterPath: d.PosterPath, BackdropPath: d.BackdropPath,
 	}
 	now := time.Now()
 	sr.LastMetadataSync = &now

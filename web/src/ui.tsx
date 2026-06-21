@@ -18,6 +18,7 @@ const PATHS: Record<string, ReactNode> = {
   refresh: <><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5" /></>,
   film: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M8 4v16M16 4v16" /></>,
   copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>,
+  anime: <><path d="M12 3.5l1.9 4.4 4.8.4-3.6 3.1 1.1 4.7L12 13.6 7.8 16.1l1.1-4.7L5.3 8.3l4.8-.4z" /><path d="M18.5 15.5l.7 1.6 1.8.2-1.4 1.1.4 1.7-1.5-.9-1.5.9.4-1.7-1.4-1.1 1.8-.2z" /></>,
   key: <><circle cx="7.5" cy="15.5" r="4.5" /><path d="m10.5 12.5 9-9M17 6l3 3M14 9l2 2" /></>,
 }
 

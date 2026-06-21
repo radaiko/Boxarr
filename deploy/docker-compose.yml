@@ -13,7 +13,7 @@
 #                          ▼  Boxarr writes a SYMLINK in the library pointing
 #                             at the file on the mount (no byte copy, no rename,
 #                             NO same-filesystem requirement)
-#                       /mnt/library/{movies,tv}/…  ──▶ Plex
+#                       /mnt/library/{movies,tv,anime}/…  ──▶ Plex
 #
 # ─── Why the library no longer needs to share the WebDAV filesystem ───────
 # The old sab2torbox flow needed /mnt/smedia to be the SAME filesystem as
@@ -59,6 +59,7 @@ services:
       - BOXARR_WEBDAV_MOUNT_ROOT=/mnt/torbox
       - BOXARR_MOVIE_LIBRARY_ROOT=/mnt/library/movies
       - BOXARR_TV_LIBRARY_ROOT=/mnt/library/tv
+      - BOXARR_ANIME_LIBRARY_ROOT=/mnt/library/anime
       - BOXARR_PLEX_URL=${PLEX_URL:-}
       - BOXARR_PLEX_TOKEN=${PLEX_TOKEN:-}
     ports:
@@ -156,10 +157,10 @@ networks:
 #           source: /mnt/torbox
 #           target: /mnt/torbox
 #           bind: { propagation: rslave }
-#   Plex libraries:  Movies → /mnt/library/movies   Shows → /mnt/library/tv
+#   Plex libraries:  Movies → /mnt/library/movies   Shows → /mnt/library/tv   Anime → /mnt/library/anime
 #
 # HOST PREP:
-#   mkdir -p /mnt/appdata/{boxarr,rclone,seerr} /mnt/torbox /mnt/library/{movies,tv}
+#   mkdir -p /mnt/appdata/{boxarr,rclone,seerr} /mnt/torbox /mnt/library/{movies,tv,anime}
 #   chown -R 1000:1000 /mnt/appdata/{boxarr,rclone,seerr} /mnt/torbox /mnt/library
 #   (rclone/FUSE host prep — fuse module + shared mount on /mnt/torbox — unchanged.)
 # ──────────────────────────────────────────────────────────────────────────

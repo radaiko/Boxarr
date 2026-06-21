@@ -42,6 +42,8 @@ const (
 	KeyAPIKey                = "api.key"
 	KeyMovieLibraryRoot      = "library.movie_root"
 	KeyTVLibraryRoot         = "library.tv_root"
+	KeyAnimeLibraryRoot      = "library.anime_root"
+	KeyPlexAnimeSection      = "plex.anime_section"
 	KeySymlinkRoot           = "library.symlink_root"
 	KeyWebDAVMountRoot       = "webdav.mount_root"
 	KeyWebDAVUsenetSubpath   = "webdav.usenet_subpath"
