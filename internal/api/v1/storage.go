@@ -359,6 +359,8 @@ func (h *Handler) activity(w http.ResponseWriter, r *http.Request) {
 		downloads = append(downloads, map[string]any{
 			"id": j.ID, "name": j.NZBName, "state": string(j.State), "mediaType": j.MediaType,
 			"progress": j.ProgressPct, "protocol": j.Protocol, "createdAt": rfc3339(j.CreatedAt),
+			"size": j.TotalBytes, "downloaded": j.DownloadedBytes, "etaSeconds": j.ETASeconds,
+			"release": parseReleaseMeta(j.NZBName),
 		})
 	}
 	tasks := []task.Task{}

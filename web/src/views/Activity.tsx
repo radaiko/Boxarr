@@ -1,8 +1,11 @@
 import { useEffect, useState, Fragment } from 'react'
-import { getJSON } from '../api'
-import { Icon, Loading, ErrorBanner, Empty, ago } from '../ui'
+import { getJSON, type FileMeta } from '../api'
+import { Icon, Loading, ErrorBanner, Empty, ago, gb, MetaChips } from '../ui'
 
-interface Download { id: number; name: string; state: string; mediaType: string; progress: number; protocol: string; createdAt: string }
+interface Download {
+  id: number; name: string; state: string; mediaType: string; progress: number; protocol: string
+  createdAt: string; size?: number; downloaded?: number; etaSeconds?: number; release?: FileMeta
+}
 interface BgTask { id: number; type: string; label: string; state: string; current?: number; total?: number; details?: string[]; error?: string; createdAt: string; finishedAt?: string }
 
 const DL_PILL: Record<string, string> = {
@@ -39,13 +42,25 @@ export function Activity() {
       ) : (
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Release</th><th style={{ width: 90 }}>Type</th><th style={{ width: 200 }}>Progress</th><th style={{ width: 130 }}>State</th></tr></thead>
+            <thead><tr><th>Release</th><th style={{ width: 90 }}>Type</th><th style={{ width: 210 }}>Progress</th><th style={{ width: 130 }}>State</th></tr></thead>
             <tbody>
               {data.downloads.map((d) => (
                 <tr key={d.id}>
-                  <td className="rel-title">{d.name}</td>
+                  <td className="rel-title">
+                    {d.name}
+                    <div className="dl-meta">
+                      <span className="chip">{d.protocol}</span>
+                      {(d.size ?? 0) > 0 && <span className="muted">{gb(d.size!)}</span>}
+                      {d.release && <MetaChips file={d.release} />}
+                    </div>
+                  </td>
                   <td className="muted">{d.mediaType}</td>
-                  <td><Progress pct={d.progress} /></td>
+                  <td>
+                    <Progress pct={d.progress} />
+                    {(d.etaSeconds ?? 0) > 0 && d.state === 'downloading' && (
+                      <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>~{eta(d.etaSeconds!)} left</div>
+                    )}
+                  </td>
                   <td><span className={`status ${DL_PILL[d.state] ?? 'idle'}`}>{d.state}</span></td>
                 </tr>
               ))}
@@ -103,6 +118,12 @@ export function Activity() {
       )}
     </section>
   )
+}
+
+function eta(s: number): string {
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.round(s / 60)}m`
+  return `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`
 }
 
 function Progress({ pct }: { pct: number }) {

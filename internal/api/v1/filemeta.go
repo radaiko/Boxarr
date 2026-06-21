@@ -75,6 +75,23 @@ func fileMetaFromTarget(symlinkPath, targetPath string) *fileMeta {
 	return fm
 }
 
+// parseReleaseMeta parses a release name (e.g. a job's NZB name) into display
+// metadata — used to show what release a download queue entry picked.
+func parseReleaseMeta(name string) *fileMeta {
+	if name == "" {
+		return nil
+	}
+	var p release.ParsedRelease
+	if pr, err := release.ParseRelease(name); err == nil && pr != nil {
+		p = *pr
+	}
+	return &fileMeta{
+		Name: name, Resolution: p.Resolution, Source: p.Source, Codec: p.Codec,
+		DynamicRange: p.HDR, Audio: p.Audio, Group: p.Group, Quality: p.Quality,
+		Languages: release.DetectLanguages(name),
+	}
+}
+
 // fileMetaFor resolves the downloaded-file metadata for a library symlink path.
 func fileMetaFor(targets map[string]string, symlinkPath string) *fileMeta {
 	if symlinkPath == "" || targets == nil {

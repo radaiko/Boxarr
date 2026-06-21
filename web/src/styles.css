@@ -277,6 +277,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .wd-cover-unknown { display: grid; place-items: center; color: var(--text-faint); border: 1px dashed var(--border); background: var(--bg-2); }
 .wd-cover-unknown svg { width: 16px; height: 16px; }
 .wd-group > summary .wd-cover { margin: -3px 2px -3px 0; }
+.dl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; font-size: 11px; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: #ffffff05; }
 .task-details-row td { padding-top: 0; }
