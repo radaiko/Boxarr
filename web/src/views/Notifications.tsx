@@ -48,6 +48,7 @@ export function Notifications() {
             <code>{n.type}</code> — {summarize(n)} <small>{n.createdAt}</small>{' '}
             {n.type === 'unknown_content' && !n.read && (
               <>
+                <button onClick={() => void act(n.id, 'adopt')}>Adopt to library</button>{' '}
                 <button onClick={() => void act(n.id, 'ignore')}>Keep</button>{' '}
                 <button onClick={() => void act(n.id, 'delete')}>Delete from TorBox</button>{' '}
               </>

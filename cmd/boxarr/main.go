@@ -79,12 +79,13 @@ func run() error {
 	workers := worker.New(st, tbAPI, set, logger)
 	workers.SetPlex(worker.LivePlex(set))
 	workers.SetAutomation(cat) // loops self-gate on the live AutomationEnabled() setting
+	workers.SetAdoptResolver(cat)
 
 	srv := api.NewServer(st, cfg, logger)
 	srv.SetHealth(api.NewHealth(st, tbAPI, 5*time.Minute))
 	srv.SetHealReporter(workers)
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
-		Store: st, Settings: set, Catalog: cat, Health: workers, Reconciler: workers,
+		Store: st, Settings: set, Catalog: cat, Health: workers, Reconciler: workers, Adopter: workers,
 		Logger: logger, Version: version,
 	}).Router())
 	seerrDeps := seerr.Deps{Store: st, Settings: set, Catalog: cat, Logger: logger}

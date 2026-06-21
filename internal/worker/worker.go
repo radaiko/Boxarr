@@ -68,6 +68,9 @@ type Workers struct {
 	// automation, when set, enables the Phase-5 scheduled loops (optional).
 	automation Automation
 
+	// adoptResolver resolves unknown-content folders to catalog links (optional).
+	adoptResolver AdoptResolver
+
 	// WebDAV /refresh state, also poller-goroutine-only.
 	httpClient         *http.Client
 	lastWebDAVRefresh  time.Time

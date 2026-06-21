@@ -29,6 +29,12 @@ type Reconciler interface {
 	Reconcile(ctx context.Context) error
 }
 
+// Adopter imports an already-present unknown WebDAV folder into the library
+// (satisfied by worker.Workers).
+type Adopter interface {
+	AdoptUnknown(ctx context.Context, remotePath, name string) error
+}
+
 // Deps are the dependencies the /api/v1 handler needs.
 type Deps struct {
 	Store      *store.Store
@@ -36,6 +42,7 @@ type Deps struct {
 	Catalog    *catalog.Service
 	Health     HealReporter
 	Reconciler Reconciler
+	Adopter    Adopter
 	Logger     *slog.Logger
 	Version    string
 }

@@ -40,6 +40,41 @@ func TestUnknownContentIgnoreAction(t *testing.T) {
 	}
 }
 
+type fakeAdopter struct {
+	called bool
+	path   string
+	name   string
+}
+
+func (f *fakeAdopter) AdoptUnknown(_ context.Context, remotePath, name string) error {
+	f.called, f.path, f.name = true, remotePath, name
+	return nil
+}
+
+func TestUnknownContentAdoptAction(t *testing.T) {
+	st := mkStore(t)
+	ctx := context.Background()
+	set := mkSettings(t, st, &config.Config{})
+	_ = st.UpsertWebDAVItem(ctx, &webdav.WebDAVItem{Name: "Movie.2024", RemotePath: "/mnt/m", Category: "movie"})
+	nid, _ := st.EnqueueNotification(ctx, &notify.Notification{
+		Type: "unknown_content", Payload: `{"name":"Movie.2024","remotePath":"/mnt/m"}`,
+	})
+	ad := &fakeAdopter{}
+	h := NewHandler(Deps{Store: st, Settings: set, Adopter: ad,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}).Router()
+
+	rec := req(t, h, http.MethodPost, "/notifications/"+itoa(nid)+"/action", "", "127.0.0.1:1", `{"action":"adopt"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("adopt action: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !ad.called || ad.path != "/mnt/m" || ad.name != "Movie.2024" {
+		t.Fatalf("adopter not invoked correctly: %+v", ad)
+	}
+	if n, _ := st.UnreadCount(ctx); n != 0 {
+		t.Errorf("notification should be read after adopt, unread=%d", n)
+	}
+}
+
 func TestSeasonMonitorToggleCascades(t *testing.T) {
 	h, st := newV1Series(t)
 	ctx := context.Background()

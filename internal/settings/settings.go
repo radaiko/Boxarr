@@ -125,15 +125,16 @@ func (s *Store) All() map[string]string {
 	return out
 }
 
-// lookup returns a DB-overlay value if present and non-empty.
+// lookup returns a DB-overlay value if the key is present. An explicitly-saved
+// empty value (the UI "clear" action) IS an override — it does not fall back to
+// the seed. Absent keys return ok=false so the seed/default applies. Numeric and
+// duration getters still fall back on a parse failure, so an empty numeric field
+// reverts to its default, while string/csv getters honor the explicit clear.
 func (s *Store) lookup(key string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	v, ok := s.cache[key]
-	if ok && v != "" {
-		return v, true
-	}
-	return "", false
+	return v, ok
 }
 
 func (s *Store) str(key, fallback string) string {
@@ -173,7 +174,19 @@ func (s *Store) boolv(key string, fallback bool) bool {
 
 func (s *Store) csv(key string, fallback []string) []string {
 	if v, ok := s.lookup(key); ok {
+		if v == "" {
+			return nil // explicit clear → empty list (not [""])
+		}
 		return strings.Split(v, ",")
+	}
+	return fallback
+}
+
+func (s *Store) i64(key string, fallback int64) int64 {
+	if v, ok := s.lookup(key); ok {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
 	}
 	return fallback
 }
