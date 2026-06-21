@@ -73,7 +73,8 @@ func TestAutoSearchGrabsBestForWantedMovie(t *testing.T) {
 		t.Fatalf("auto-search did not grab the movie: %+v", jobs)
 	}
 	m, _ := st.GetMovie(ctx, mid)
-	if m.Status != media.MediaSearching || m.JobID == 0 {
+	// After a successful grab the item is downloading (a job exists), not searching.
+	if m.Status != media.MediaDownloading || m.JobID == 0 {
 		t.Fatalf("movie not linked to grab: status=%s jobID=%d", m.Status, m.JobID)
 	}
 }

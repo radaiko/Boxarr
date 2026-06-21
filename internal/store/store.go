@@ -291,6 +291,16 @@ func (s *Store) FindJobByMedia(ctx context.Context, mediaType string, mediaRef i
 	return s.findOne(ctx, `media_type=? AND media_ref=?`, mediaType, mediaRef)
 }
 
+// ActiveJobForMedia returns an in-flight (not failed/imported/deleted) job linked
+// to the catalog item, or nil — used to avoid grabbing the same media twice (e.g.
+// a later search picking a different tracker's release before the first finishes).
+func (s *Store) ActiveJobForMedia(ctx context.Context, mediaType string, mediaRef int64) (*job.Job, error) {
+	return s.findOne(ctx,
+		`media_type=? AND media_ref=? AND state IN
+		 ('pending','submitting','queued','downloading','seeding','completed','healing')`,
+		mediaType, mediaRef)
+}
+
 func (s *Store) findOne(ctx context.Context, where string, args ...any) (*job.Job, error) {
 	j, err := scanJob(s.db.QueryRowContext(ctx,
 		`SELECT `+jobColumns+` FROM jobs WHERE `+where+` ORDER BY id DESC LIMIT 1`, args...))

@@ -28,8 +28,11 @@ var planNames = map[int]string{0: "Free", 1: "Essential", 2: "Pro", 3: "Standard
 func (h *Handler) storage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	used, _ := h.deps.Store.WebDAVUsageBytes(ctx)
-	active, _ := h.deps.Store.CountJobsByState(ctx,
-		job.StateSubmitting, job.StateQueued, job.StateDownloading, job.StateSeeding)
+	// "active" = jobs actually downloading (the number comparable to slots);
+	// queued/seeding are reported separately so the stat isn't misleading.
+	active, _ := h.deps.Store.CountJobsByState(ctx, job.StateDownloading)
+	queued, _ := h.deps.Store.CountJobsByState(ctx, job.StateSubmitting, job.StateQueued)
+	seeding, _ := h.deps.Store.CountJobsByState(ctx, job.StateSeeding)
 
 	byCat, _ := h.deps.Store.WebDAVUsageByCategory(ctx)
 	// Learned limits: what Boxarr inferred + remembers from TorBox throttling.
@@ -47,7 +50,7 @@ func (h *Handler) storage(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"usedBytes":  used,
 		"byCategory": byCat,
-		"downloads":  map[string]any{"active": active},
+		"downloads":  map[string]any{"active": active, "queued": queued, "seeding": seeding},
 		"limits": map[string]any{
 			"dailyCap":      h.deps.Settings.TorBoxDailyCap(),
 			"usedToday":     usedToday,

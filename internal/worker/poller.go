@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/media"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
 
@@ -198,11 +199,45 @@ func (w *Workers) reconcile(ctx context.Context, j *job.Job, rec torbox.UsenetDo
 
 	if j.State == job.StateQueued {
 		j.State = job.StateDownloading
+		w.markMediaDownloading(ctx, j) // reflect on the catalog item (backstop for all grab paths)
 	}
 	if err := w.store.UpdateJob(ctx, j); err != nil {
 		log.Error("persisting progress", "error", err)
 	}
 	return reconcileOngoing
+}
+
+// markMediaDownloading flips a linked movie/episode from wanted/searching to
+// downloading so the UI stops showing "searching" once TorBox is pulling it.
+func (w *Workers) markMediaDownloading(ctx context.Context, j *job.Job) {
+	if j.MediaRef == 0 {
+		return
+	}
+	dl := func(s media.MediaStatus, hasFile bool) (media.MediaStatus, bool) {
+		if hasFile || s == media.MediaAvailable || s == media.MediaDownloading {
+			return s, false
+		}
+		return media.MediaDownloading, true
+	}
+	switch j.MediaType {
+	case "movie":
+		m, err := w.store.GetMovie(ctx, j.MediaRef)
+		if err != nil {
+			return
+		}
+		if ns, changed := dl(m.Status, m.HasFile); changed {
+			m.Status = ns
+			_ = w.store.UpdateMovie(ctx, m)
+		}
+	case "episode":
+		ep, err := w.store.GetEpisode(ctx, j.MediaRef)
+		if err != nil {
+			return
+		}
+		if _, changed := dl(ep.Status, ep.HasFile); changed {
+			_ = w.store.SetEpisodeStatus(ctx, ep.ID, media.MediaDownloading)
+		}
+	}
 }
 
 // pathRetryInterval and pathRetryTimeout govern WebDAV listing-lag tolerance.

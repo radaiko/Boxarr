@@ -64,8 +64,9 @@ func (s *Service) SearchWantedForMovie(ctx context.Context, movieID int64) error
 		return err
 	}
 	m.JobID = jb.ID
-	if m.Status == media.MediaWanted || m.Status == media.MediaMissing {
-		m.Status = media.MediaSearching
+	// A release was grabbed and a job created — it's downloading now, not searching.
+	if m.Status != media.MediaAvailable {
+		m.Status = media.MediaDownloading
 	}
 	return s.store.UpdateMovie(ctx, m)
 }
@@ -110,8 +111,8 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 			continue
 		}
 		ep.JobID = jb.ID
-		if ep.Status == media.MediaWanted || ep.Status == media.MediaMissing {
-			_ = s.store.SetEpisodeStatus(ctx, ep.ID, media.MediaSearching)
+		if ep.Status != media.MediaAvailable {
+			_ = s.store.SetEpisodeStatus(ctx, ep.ID, media.MediaDownloading)
 		}
 	}
 	return nil
@@ -143,6 +144,13 @@ func (s *Service) pickBest(results []prowlarr.ReleaseResource, kind string) (pro
 
 // grabBest stores the chosen release's artifact, dedups, and creates a pending job.
 func (s *Service) grabBest(ctx context.Context, rr prowlarr.ReleaseResource, mediaType string, mediaRef int64) (*job.Job, error) {
+	// Media-level dedup: if this item already has an in-flight job (e.g. a prior
+	// cycle grabbed a different tracker's release), don't download it twice.
+	if mediaRef > 0 {
+		if existing, _ := s.store.ActiveJobForMedia(ctx, mediaType, mediaRef); existing != nil {
+			return existing, nil
+		}
+	}
 	if rr.Protocol == "torrent" {
 		hash := strings.ToLower(rr.InfoHash)
 		if hash != "" {

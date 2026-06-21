@@ -6,7 +6,7 @@ interface LimitEvent { kind: string; detail: string; createdAt: string }
 interface StorageResp {
   usedBytes: number
   byCategory?: Record<string, number>
-  downloads?: { active?: number }
+  downloads?: { active?: number; queued?: number; seeding?: number }
   plan?: { tier: number; tierName: string; concurrentSlots: number; isSubscribed: boolean }
   usage?: { monthlyDownloadedBytes: number; cooldownUntil: string; inCooldown: boolean }
   limits?: { dailyCap: number; usedToday: number; cooldownUntil: string; events: LimitEvent[] }
@@ -42,6 +42,10 @@ export function Storage() {
         <div className="stat">
           <div className="label">Active downloads</div>
           <div className="value">{s.downloads?.active ?? 0}{s.plan ? <small> / {s.plan.concurrentSlots} slots</small> : null}</div>
+          <div className="sub">
+            {s.downloads?.queued ? `${s.downloads.queued} queued` : 'none queued'}
+            {s.downloads?.seeding ? ` · ${s.downloads.seeding} seeding` : ''}
+          </div>
         </div>
         <div className="stat">
           <div className="label">Grabs today</div>
