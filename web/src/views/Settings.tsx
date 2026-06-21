@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJSON, putJSON, postJSON } from '../api'
+import { Icon, Loading, ErrorBanner } from '../ui'
 
 interface SettingsResponse {
   settings: Record<string, string> // DB overlay (secrets masked as ********)
@@ -104,8 +105,6 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
   },
 ]
 
-const testable = ['torbox', 'prowlarr', 'tmdb', 'tvdb', 'plex'] as const
-
 // Maps a settings group title to a test service + the request body built from
 // the current values (posted to /settings/test/{svc} for test-before-save).
 const groupService: Record<string, { svc: string; body: (v: (k: string) => string) => Record<string, string> }> = {
@@ -130,8 +129,8 @@ export function Settings() {
   }
   useEffect(reload, [])
 
-  if (err) return <p>Error: {err}</p>
-  if (!data) return <p>Loading…</p>
+  if (err) return <ErrorBanner message={err} />
+  if (!data) return <Loading />
 
   function valueOf(key: string, secret?: boolean): string {
     if (key in edits) return edits[key]
@@ -161,66 +160,76 @@ export function Settings() {
     }
   }
 
+  const dirty = Object.keys(edits).length > 0
+
   return (
     <section>
-      <h2>Settings</h2>
-      <p>
-        Configure all connections here — no environment variables required. Changes apply immediately.
+      <p className="muted" style={{ marginTop: 0, marginBottom: 18 }}>
+        Everything Boxarr needs is configured here — no environment variables required. Changes apply immediately.
       </p>
-      {groups.map((g) => (
-        <fieldset key={g.title} style={{ marginBottom: 12 }}>
-          <legend>{g.title}</legend>
-          {g.fields.map((f) => (
-            <div key={f.key} style={{ margin: '4px 0' }}>
-              <label style={{ display: 'inline-block', width: 220 }}>{f.label}</label>
-              {f.bool ? (
-                <input
-                  type="checkbox"
-                  checked={valueOf(f.key) === 'true'}
-                  onChange={(e) => setEdits({ ...edits, [f.key]: e.target.checked ? 'true' : 'false' })}
-                />
-              ) : (
-                <input
-                  type={f.secret ? 'password' : 'text'}
-                  style={{ width: 320 }}
-                  placeholder={f.secret && data!.configured ? secretPlaceholder(f.key, data!) : ''}
-                  value={valueOf(f.key, f.secret)}
-                  onChange={(e) => setEdits({ ...edits, [f.key]: e.target.value })}
-                />
+      <div className="settings-grid">
+        {groups.map((g) => {
+          const gs = groupService[g.title]
+          const svcStatus = gs ? data!.configured[gs.svc] : undefined
+          return (
+            <div key={g.title} className="fieldset">
+              <div className="legend" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {g.title}
+                {svcStatus !== undefined && (
+                  <span className={`status ${svcStatus ? 'available' : 'missing'}`} style={{ marginLeft: 'auto' }}>
+                    {svcStatus ? 'connected' : 'not set'}
+                  </span>
+                )}
+              </div>
+              {g.fields.map((f) => (
+                <div key={f.key} className={f.bool ? 'field field-row' : 'field'}>
+                  {f.bool ? (
+                    <>
+                      <input id={f.key} type="checkbox" checked={valueOf(f.key) === 'true'}
+                        onChange={(e) => setEdits({ ...edits, [f.key]: e.target.checked ? 'true' : 'false' })} />
+                      <label htmlFor={f.key} style={{ margin: 0 }}>{f.label}</label>
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor={f.key}>{f.label}</label>
+                      <input id={f.key} className="input" type={f.secret ? 'password' : 'text'}
+                        placeholder={f.secret ? secretPlaceholder(f.key, data!) : ''}
+                        value={valueOf(f.key, f.secret)}
+                        onChange={(e) => setEdits({ ...edits, [f.key]: e.target.value })} />
+                    </>
+                  )}
+                </div>
+              ))}
+              {gs && (
+                <div className="test-line">
+                  {/* Send only edited values; the server falls back to saved ones
+                      (so unedited secrets are never sent as the redacted mask). */}
+                  <button className="btn btn-sm" onClick={() => void test(gs.svc, gs.body((k) => edits[k] ?? ''))}>
+                    <Icon name="refresh" /> Test connection
+                  </button>
+                  <span className={testTone(tests[gs.svc])}>{tests[gs.svc] ?? ''}</span>
+                </div>
               )}
             </div>
-          ))}
-          {groupService[g.title] && (
-            <div style={{ marginTop: 4 }}>
-              <button
-                onClick={() => {
-                  // Send only edited values; the server falls back to saved ones
-                  // (so unedited secrets are never sent as the redacted mask).
-                  const gs = groupService[g.title]
-                  void test(gs.svc, gs.body((k) => edits[k] ?? ''))
-                }}
-              >
-                Test connection
-              </button>{' '}
-              <span>{tests[groupService[g.title].svc] ?? ''}</span>
-            </div>
-          )}
-        </fieldset>
-      ))}
-      <button onClick={() => void save()} disabled={Object.keys(edits).length === 0}>
-        Save
-      </button>{' '}
-      {msg && <span>{msg}</span>}
-      <h3>Connection status</h3>
-      <ul>
-        {testable.map((svc) => (
-          <li key={svc}>
-            {svc}: {data.configured[svc] ? 'configured' : 'not configured'}
-          </li>
-        ))}
-      </ul>
+          )
+        })}
+      </div>
+      <div className="save-bar">
+        <button className="btn btn-primary" onClick={() => void save()} disabled={!dirty}>
+          <Icon name="check" /> Save changes
+        </button>
+        {dirty && !msg && <span className="toast">{Object.keys(edits).length} unsaved</span>}
+        {msg && <span className={`toast${msg.startsWith('Saved') ? ' ok' : ''}`}>{msg}</span>}
+      </div>
     </section>
   )
+}
+
+function testTone(v?: string): string {
+  if (!v) return ''
+  if (v.startsWith('✓')) return 'test-ok'
+  if (v.startsWith('✗')) return 'test-bad'
+  return ''
 }
 
 function secretPlaceholder(key: string, data: SettingsResponse): string {

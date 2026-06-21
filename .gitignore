@@ -12,3 +12,6 @@
 # Built SPA assets are produced by the Docker/CI build; only the committed
 # placeholder internal/web/dist/index.html is tracked.
 /internal/web/dist/assets/
+
+# browser-preview artifacts
+.playwright-mcp/
