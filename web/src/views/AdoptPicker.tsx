@@ -42,11 +42,19 @@ export function AdoptPicker({ ids, defaultKind, defaultTerm, onClose, onDone }: 
 
   async function pick(c: Cand) {
     setAdopting(true); setErr('')
-    try {
-      for (const id of ids) await postJSON(`/webdav/${id}/adopt`, { kind, tmdbId: c.tmdbId })
-      await onDone()
-      onClose()
-    } catch (e) { setErr(shorten(String(e))); setAdopting(false) }
+    // Don't abort the batch on one failure (a show may have an odd episode) — try
+    // them all, then ALWAYS refresh the list. Close on full success; otherwise
+    // keep the dialog open with a clear reason so it can be retried.
+    let fails = 0
+    let lastErr = ''
+    for (const id of ids) {
+      try { await postJSON(`/webdav/${id}/adopt`, { kind, tmdbId: c.tmdbId }) }
+      catch (e) { fails++; lastErr = String(e) }
+    }
+    await onDone()
+    if (fails === 0) { onClose(); return }
+    setErr(`${fails} of ${ids.length} couldn’t be added — ${shorten(lastErr)}`)
+    setAdopting(false)
   }
 
   // Portal to <body> so the fixed overlay isn't constrained/clipped by the table
