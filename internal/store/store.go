@@ -141,7 +141,7 @@ const jobColumns = `id, state, category, nzb_name, nzb_content, nzb_url,
 	downloaded_bytes, progress_pct, fail_message, created_at, updated_at,
 	submitted_at, completed_at, eta_seconds, heal_count, last_healed_at,
 	last_heal_error, protocol, media_type, media_ref, torrent_magnet,
-	torrent_hash, torrent_file`
+	torrent_hash, torrent_file, is_upgrade`
 
 // scanJob reads one job row in jobColumns order.
 func scanJob(row interface{ Scan(...any) error }) (*job.Job, error) {
@@ -151,16 +151,18 @@ func scanJob(row interface{ Scan(...any) error }) (*job.Job, error) {
 		mediaType, torrentMagnet, torrentHash             sql.NullString
 		torboxID, mediaRef                                sql.NullInt64
 		submitted, completed, healedAt                    sql.NullTime
+		isUpgrade                                         int
 	)
 	err := row.Scan(&j.ID, &j.State, &j.Category, &j.NZBName, &j.NZBContent,
 		&nzbURL, &nzbSHA, &torboxID, &hash, &storage, &j.TotalBytes,
 		&j.DownloadedBytes, &j.ProgressPct, &failMsg, &j.CreatedAt,
 		&j.UpdatedAt, &submitted, &completed, &j.ETASeconds, &j.HealCount,
 		&healedAt, &healError, &j.Protocol, &mediaType, &mediaRef,
-		&torrentMagnet, &torrentHash, &j.TorrentFile)
+		&torrentMagnet, &torrentHash, &j.TorrentFile, &isUpgrade)
 	if err != nil {
 		return nil, err
 	}
+	j.IsUpgrade = isUpgrade != 0
 	j.NZBURL, j.NZBSHA256, j.TorBoxHash = nzbURL.String, nzbSHA.String, hash.String
 	j.StoragePath, j.FailMessage, j.TorBoxID = storage.String, failMsg.String, torboxID.Int64
 	j.LastHealError = healError.String
@@ -182,11 +184,11 @@ func scanJob(row interface{ Scan(...any) error }) (*job.Job, error) {
 func (s *Store) CreateJob(ctx context.Context, j *job.Job) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO jobs (state, category, nzb_name, nzb_content, nzb_url, nzb_sha256,
-		 protocol, media_type, media_ref, torrent_magnet, torrent_hash, torrent_file)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 protocol, media_type, media_ref, torrent_magnet, torrent_hash, torrent_file, is_upgrade)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		j.State, j.Category, j.NZBName, j.NZBContent, nullStr(j.NZBURL), nullStr(j.NZBSHA256),
 		protoOrDefault(j.Protocol), nullStr(j.MediaType), nullInt(j.MediaRef),
-		nullStr(j.TorrentMagnet), nullStr(j.TorrentHash), j.TorrentFile)
+		nullStr(j.TorrentMagnet), nullStr(j.TorrentHash), j.TorrentFile, b2i(j.IsUpgrade))
 	if err != nil {
 		return 0, fmt.Errorf("inserting job: %w", err)
 	}

@@ -9,7 +9,11 @@ func (w *Workers) autoSearchOnce(ctx context.Context) error {
 	if w.automation == nil || !w.set.AutomationEnabled() {
 		return nil
 	}
-	return w.automation.AutoSearchWanted(ctx)
+	if err := w.automation.AutoSearchWanted(ctx); err != nil {
+		return err
+	}
+	// Also look to upgrade already-imported items to a better language/quality.
+	return w.automation.UpgradeWanted(ctx)
 }
 
 // metadataRefreshOnce runs one scheduled metadata refresh (FR-CAT-5), gated on

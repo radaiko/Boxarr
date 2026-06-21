@@ -85,6 +85,10 @@ type Job struct {
 	TorrentMagnet string // magnet URI (parallels NZBURL)
 	TorrentHash   string // info-hash hex (parallels NZBSHA256; index-only, app dedup)
 	TorrentFile   []byte // .torrent bytes (parallels NZBContent)
+
+	// IsUpgrade marks a grab that replaces an already-imported item with a better
+	// language/quality release; the submitter won't retire it as a duplicate.
+	IsUpgrade bool
 }
 
 // NzoID returns the SABnzbd nzo_id Sonarr uses to reference this job.

@@ -71,17 +71,33 @@ func (w *Workers) importMovie(ctx context.Context, j *job.Job, sourceDir string)
 		return fmt.Errorf("marking job imported: %w", err)
 	}
 
+	oldJobID := m.JobID
 	m.LibraryPath = linkPath
 	m.HasFile = true
 	m.Status = media.MediaAvailable
+	m.JobID = j.ID
 	if err := w.store.UpdateMovie(ctx, m); err != nil {
 		log.Error("updating movie after import", "error", err)
 	}
 	log.Info("movie imported", "library_path", linkPath)
+	if j.IsUpgrade {
+		w.supersedeOldDownload(ctx, j.ID, oldJobID)
+	}
 
 	w.notifyEvent(ctx, "download_completed", j, map[string]any{"title": m.Title, "libraryPath": linkPath})
 	w.maybePlexScan(ctx, dir, "movie")
 	return nil
+}
+
+// supersedeOldDownload deletes the TorBox download + job that an upgrade replaced
+// (the new import already overwrote the symlink and re-owns the imported_symlink
+// row, so only the orphaned old TorBox content is removed).
+func (w *Workers) supersedeOldDownload(ctx context.Context, newJobID, oldJobID int64) {
+	if oldJobID == 0 || oldJobID == newJobID {
+		return
+	}
+	w.logger.Info("upgrade: removing superseded download", "old_job", oldJobID, "new_job", newJobID)
+	w.DeleteDownloads(ctx, []int64{oldJobID}, func(int, int, string) {})
 }
 
 // maybePlexScan triggers a best-effort Plex partial scan of dir if Plex is wired

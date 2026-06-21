@@ -56,6 +56,7 @@ func (w *Workers) importEpisodes(ctx context.Context, j *job.Job, sourceDir stri
 	seriesFolder := movieFolderName(sr.Title, sr.Year) // "Title (Year)"
 
 	imported := 0
+	oldJobs := map[int64]bool{} // previous jobs an upgrade replaces (deleted after)
 	for _, video := range videos {
 		parsed, perr := release.ParseRelease(filepath.Base(video))
 		if perr != nil {
@@ -81,6 +82,9 @@ func (w *Workers) importEpisodes(ctx context.Context, j *job.Job, sourceDir stri
 		}
 		// Every covered episode points at the (possibly multi-ep) file.
 		for _, ep := range targets {
+			if ep.JobID != 0 && ep.JobID != j.ID {
+				oldJobs[ep.JobID] = true
+			}
 			ep.LibraryPath = linkPath
 			ep.HasFile = true
 			ep.Status = media.MediaAvailable
@@ -104,6 +108,11 @@ func (w *Workers) importEpisodes(ctx context.Context, j *job.Job, sourceDir stri
 		return fmt.Errorf("marking job imported: %w", err)
 	}
 	log.Info("series release imported", "files", imported)
+	if j.IsUpgrade {
+		for old := range oldJobs {
+			w.supersedeOldDownload(ctx, j.ID, old)
+		}
+	}
 	w.notifyEvent(ctx, "download_completed", j, map[string]any{"title": sr.Title, "files": imported})
 	kind := "tv"
 	if sr.SeriesType == "anime" {

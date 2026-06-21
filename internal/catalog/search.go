@@ -66,7 +66,7 @@ func (s *Service) SearchWantedForMovie(ctx context.Context, movieID int64) error
 	if !ok {
 		return nil // nothing acceptable; stays wanted
 	}
-	jb, err := s.grabBest(ctx, best, "movie", m.ID)
+	jb, err := s.grabBest(ctx, best, "movie", m.ID, false)
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 		if !ok {
 			continue
 		}
-		jb, gerr := s.grabBest(ctx, best, "episode", ep.ID)
+		jb, gerr := s.grabBest(ctx, best, "episode", ep.ID, false)
 		if gerr != nil {
 			s.logSearchErr(q, gerr)
 			continue
@@ -176,9 +176,11 @@ func (s *Service) pickBest(results []prowlarr.ReleaseResource, kind string) (pro
 }
 
 // grabBest stores the chosen release's artifact, dedups, and creates a pending job.
-func (s *Service) grabBest(ctx context.Context, rr prowlarr.ReleaseResource, mediaType string, mediaRef int64) (*job.Job, error) {
+// upgrade=true marks the job as a language/quality replacement of an imported item.
+func (s *Service) grabBest(ctx context.Context, rr prowlarr.ReleaseResource, mediaType string, mediaRef int64, upgrade bool) (*job.Job, error) {
 	// Media-level dedup: if this item already has an in-flight job (e.g. a prior
-	// cycle grabbed a different tracker's release), don't download it twice.
+	// cycle grabbed a different tracker's release, or an upgrade already running),
+	// don't download it twice.
 	if mediaRef > 0 {
 		if existing, _ := s.store.ActiveJobForMedia(ctx, mediaType, mediaRef); existing != nil {
 			return existing, nil
@@ -194,6 +196,7 @@ func (s *Service) grabBest(ctx context.Context, rr prowlarr.ReleaseResource, med
 		jb := &job.Job{
 			State: job.StatePending, Category: mediaType, NZBName: rr.Title,
 			Protocol: "torrent", MediaType: mediaType, MediaRef: mediaRef, TorrentHash: hash,
+			IsUpgrade: upgrade,
 		}
 		if rr.MagnetURL != "" {
 			jb.TorrentMagnet = rr.MagnetURL
@@ -223,7 +226,7 @@ func (s *Service) grabBest(ctx context.Context, rr prowlarr.ReleaseResource, med
 	return s.insertJob(ctx, &job.Job{
 		State: job.StatePending, Category: mediaType, NZBName: rr.Title,
 		NZBContent: b, NZBSHA256: sha, NZBURL: rr.DownloadURL,
-		Protocol: "usenet", MediaType: mediaType, MediaRef: mediaRef,
+		Protocol: "usenet", MediaType: mediaType, MediaRef: mediaRef, IsUpgrade: upgrade,
 	})
 }
 

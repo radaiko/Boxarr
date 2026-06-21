@@ -40,6 +40,11 @@ func (w *Workers) redundantPendingReason(ctx context.Context, j *job.Job) string
 	if j.MediaRef == 0 {
 		return ""
 	}
+	if j.IsUpgrade {
+		// An upgrade legitimately replaces an already-imported item; the
+		// upgrade search guards against duplicate upgrades before grabbing.
+		return ""
+	}
 	switch j.MediaType {
 	case "movie":
 		if m, err := w.store.GetMovie(ctx, j.MediaRef); err == nil && m.HasFile {

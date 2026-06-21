@@ -34,6 +34,7 @@ type PlexScanner interface {
 // satisfies it. Registered only when config enables automation.
 type Automation interface {
 	AutoSearchWanted(ctx context.Context) error
+	UpgradeWanted(ctx context.Context) error
 	RefreshMetadata(ctx context.Context) error
 }
 
