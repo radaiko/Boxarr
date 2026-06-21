@@ -127,7 +127,7 @@ services:
         bind: { propagation: rshared }
     command: >
       mount torbox: /data
-      --allow-other --allow-non-empty --dir-cache-time 9999h --poll-interval 15m
+      --allow-other --allow-non-empty --dir-cache-time 1h
       --vfs-cache-mode full --vfs-cache-max-size 50G --vfs-cache-max-age 168h
       --vfs-read-ahead 256M --vfs-read-chunk-size 32M --vfs-read-chunk-size-limit 1G
       --buffer-size 64M --vfs-fast-fingerprint --no-checksum --no-modtime
@@ -172,9 +172,15 @@ chown -R 1000:1000 /mnt/appdata/{boxarr,rclone,seerr} /mnt/torbox /mnt/library
 Bring it up with `docker compose up -d`, then open Boxarr at `http://<host>:8181`
 and finish setup in **Settings**.
 
-> **rclone `--poll-interval`:** `15m` lets the mount notice when TorBox content is
-> added/removed (e.g. after a delete). `--poll-interval 0` caches the directory
-> listing indefinitely, so deletions won't disappear until you restart rclone.
+> **rclone `--dir-cache-time` matters.** TorBox is a WebDAV remote, and rclone's
+> `--poll-interval` change-notification is **not supported on WebDAV** — so the
+> directory cache only refreshes when `--dir-cache-time` expires. With a very long
+> value (e.g. `9999h`) rclone never notices content **added or removed** on TorBox,
+> so deleted folders linger in the mount (and freshly-grabbed ones can be slow to
+> appear). Keep `--dir-cache-time` modest — `1h` is a good default; drop to `5m` if
+> you want deletions/additions to reflect faster (at the cost of more listing
+> requests). Boxarr tombstones a path it deletes so its **own** view is correct
+> immediately regardless, but the mount itself (and Plex) follow `--dir-cache-time`.
 
 ### Seerr setup (one-time)
 
