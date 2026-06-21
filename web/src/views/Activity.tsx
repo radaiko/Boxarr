@@ -1,6 +1,6 @@
 import { useEffect, useState, Fragment } from 'react'
 import { getJSON, type FileMeta } from '../api'
-import { Loading, ErrorBanner, Empty, ago, gb, MetaChips } from '../ui'
+import { Icon, Loading, ErrorBanner, Empty, ago, gb, MetaChips } from '../ui'
 
 interface Download {
   id: number; name: string; state: string; mediaType: string; progress: number; protocol: string
@@ -30,6 +30,7 @@ export function Activity() {
   const [err, setErr] = useState('')
   const [tab, setTab] = useState<Tab>('Queue')
   const [count, setCount] = useState(50)
+  const [q, setQ] = useState('')
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   function load() {
@@ -40,11 +41,16 @@ export function Activity() {
   if (err && !data) return <ErrorBanner message={err} />
   if (!data) return <Loading />
 
-  const counts: Record<Tab, number> = { Queue: data.downloads.length, History: data.history.length, Tasks: data.tasks.length }
+  const ql = q.trim().toLowerCase()
+  const hit = (s: string) => !ql || s.toLowerCase().includes(ql)
+  const dls = data.downloads.filter((d) => hit(d.name))
+  const hist = data.history.filter((d) => hit(d.name))
+  const tsk = data.tasks.filter((t) => hit(t.label) || (t.details ?? []).some(hit))
+  const counts: Record<Tab, number> = { Queue: dls.length, History: hist.length, Tasks: tsk.length }
 
   return (
     <section>
-      <div className="row-between" style={{ marginBottom: 16 }}>
+      <div className="row-between" style={{ marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <div className="tabs" style={{ margin: 0 }}>
           {TABS.map((t) => (
             <button key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
@@ -52,16 +58,23 @@ export function Activity() {
             </button>
           ))}
         </div>
-        <label className="chk">Show
-          <select className="input" style={{ width: 'auto', marginLeft: 8 }} value={count} onChange={(e) => setCount(Number(e.target.value))}>
-            {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
+          <div className="search-box">
+            <Icon name="search" />
+            <input className="input" type="search" placeholder="Filter by name…" value={q}
+              onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <label className="chk">Show
+            <select className="input" style={{ width: 'auto', marginLeft: 8 }} value={count} onChange={(e) => setCount(Number(e.target.value))}>
+              {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        </div>
       </div>
 
-      {tab === 'Queue' && <QueueTable rows={data.downloads.slice(0, count)} />}
-      {tab === 'History' && <HistoryTable rows={data.history.slice(0, count)} />}
-      {tab === 'Tasks' && <TasksTable rows={data.tasks.slice(0, count)} expanded={expanded} setExpanded={setExpanded} />}
+      {tab === 'Queue' && <QueueTable rows={dls.slice(0, count)} />}
+      {tab === 'History' && <HistoryTable rows={hist.slice(0, count)} />}
+      {tab === 'Tasks' && <TasksTable rows={tsk.slice(0, count)} expanded={expanded} setExpanded={setExpanded} />}
     </section>
   )
 }
