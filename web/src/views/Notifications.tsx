@@ -68,14 +68,14 @@ export function Notifications() {
 function noteTone(type: string): string {
   if (type.includes('fail') || type.includes('broken') || type.includes('error')) return 'broken'
   if (type.includes('completed') || type.includes('import')) return 'available'
-  if (type === 'unknown_content') return 'wanted'
+  if (type === 'unknown_content' || type.includes('missing')) return 'wanted'
   return 'searching'
 }
 
 function summarize(n: Note): string {
   const p = n.payload || {}
   const parts: string[] = []
-  for (const key of ['title', 'name', 'error', 'limit']) {
+  for (const key of ['title', 'name', 'item', 'message', 'error', 'limit']) {
     if (typeof p[key] === 'string') parts.push(p[key] as string)
   }
   return parts.join(' · ') || '—'

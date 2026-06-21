@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/radaiko/boxarr/internal/plex"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/torbox"
@@ -28,6 +29,10 @@ type TorBoxAPI interface {
 // PlexScanner triggers a Plex library scan after import. *plex.Client satisfies it.
 type PlexScanner interface {
 	ScanPath(ctx context.Context, sectionID, path string) error
+	SectionItems(ctx context.Context, sectionID string, typ int) ([]plex.LibItem, error)
+	ShowEpisodes(ctx context.Context, showRatingKey string) ([]plex.LibItem, error)
+	ItemStreams(ctx context.Context, ratingKey string) (partID int, audio, subs []plex.Stream, err error)
+	SetDefaultStreams(ctx context.Context, partID, audioStreamID, subtitleStreamID int) error
 }
 
 // Automation drives the optional Phase-5 scheduled loops. *catalog.Service
@@ -120,6 +125,7 @@ func (w *Workers) Run(ctx context.Context) {
 		{"deleter", w.set.PollInterval(), w.deleteOnce},
 		{"reaper", 5 * time.Minute, w.reapOnce},
 		{"reconciler", w.set.ReconcileInterval(), w.reconcileOnce},
+		{"plex-language", w.set.SearchInterval(), w.plexLanguageOnce},
 	}
 	if w.set.HealEnabled() {
 		loops = append(loops,

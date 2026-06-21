@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 
+	"github.com/radaiko/boxarr/internal/plex"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
@@ -41,4 +42,16 @@ type livePlex struct{ set *settings.Store }
 
 func (l livePlex) ScanPath(ctx context.Context, sectionID, path string) error {
 	return l.set.Plex().ScanPath(ctx, sectionID, path)
+}
+func (l livePlex) SectionItems(ctx context.Context, sectionID string, typ int) ([]plex.LibItem, error) {
+	return l.set.Plex().SectionItems(ctx, sectionID, typ)
+}
+func (l livePlex) ShowEpisodes(ctx context.Context, showRatingKey string) ([]plex.LibItem, error) {
+	return l.set.Plex().ShowEpisodes(ctx, showRatingKey)
+}
+func (l livePlex) ItemStreams(ctx context.Context, ratingKey string) (int, []plex.Stream, []plex.Stream, error) {
+	return l.set.Plex().ItemStreams(ctx, ratingKey)
+}
+func (l livePlex) SetDefaultStreams(ctx context.Context, partID, audioStreamID, subtitleStreamID int) error {
+	return l.set.Plex().SetDefaultStreams(ctx, partID, audioStreamID, subtitleStreamID)
 }
