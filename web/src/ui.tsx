@@ -49,7 +49,7 @@ export function Empty({ icon, title, hint, action }: { icon: string; title: stri
 }
 
 export function Loading() {
-  return <div className="loading"><div className="spinner" /></div>
+  return <div className="loading" role="status"><div className="spinner" /><span className="sr-only">Loading…</span></div>
 }
 
 export function ErrorBanner({ message }: { message: string }) {

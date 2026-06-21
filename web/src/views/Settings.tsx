@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJSON, putJSON, postJSON, setApiKey, getApiKey } from '../api'
-import { Icon, Loading, ErrorBanner } from '../ui'
+import { Icon, Loading, ErrorBanner, initials } from '../ui'
 
 interface SettingsResponse {
   settings: Record<string, string> // DB overlay (secrets masked as ********)
@@ -10,7 +10,7 @@ interface SettingsResponse {
 
 // Field groups mirror the settings keys (internal/settings). secret fields render
 // as password inputs and show a "configured" hint instead of the value.
-const groups: { title: string; fields: { key: string; label: string; secret?: boolean; bool?: boolean }[] }[] = [
+const groups: { title: string; fields: { key: string; label: string; secret?: boolean; bool?: boolean; placeholder?: string }[] }[] = [
   {
     title: 'TorBox',
     fields: [
@@ -22,11 +22,11 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
   {
     title: 'Prowlarr',
     fields: [
-      { key: 'prowlarr.url', label: 'URL' },
+      { key: 'prowlarr.url', label: 'Server URL', placeholder: 'http://prowlarr:9696' },
       { key: 'prowlarr.api_key', label: 'API key', secret: true },
     ],
   },
-  { title: 'TMDB', fields: [{ key: 'tmdb.token', label: 'API read token', secret: true }] },
+  { title: 'TMDB', fields: [{ key: 'tmdb.token', label: 'API read token (v4)', secret: true }] },
   {
     title: 'TVDB',
     fields: [
@@ -37,10 +37,10 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
   {
     title: 'Plex',
     fields: [
-      { key: 'plex.url', label: 'URL' },
-      { key: 'plex.token', label: 'Token', secret: true },
-      { key: 'plex.movie_section', label: 'Movie section id' },
-      { key: 'plex.tv_section', label: 'TV section id' },
+      { key: 'plex.url', label: 'Server URL', placeholder: 'http://plex:32400' },
+      { key: 'plex.token', label: 'X-Plex-Token', secret: true },
+      { key: 'plex.movie_section', label: 'Movie library section ID', placeholder: '1' },
+      { key: 'plex.tv_section', label: 'TV library section ID', placeholder: '2' },
     ],
   },
   { title: 'Seerr (Overseerr/Jellyseerr)', fields: [{ key: 'seerr.api_keys', label: 'API keys (comma-separated)', secret: true }] },
@@ -115,6 +115,15 @@ const groupService: Record<string, { svc: string; body: (v: (k: string) => strin
   Plex: { svc: 'plex', body: (v) => ({ url: v('plex.url'), token: v('plex.token') }) },
 }
 
+// One-line role per connection (shown under the name, Sonarr-style).
+const ROLES: Record<string, string> = {
+  TorBox: 'Download backend',
+  Prowlarr: 'Indexer search',
+  TMDB: 'Movie & TV metadata',
+  TVDB: 'TV metadata (scene / absolute ordering)',
+  Plex: 'Library / media server',
+}
+
 // Tabs group the settings like Sonarr/Radarr instead of one long page.
 const TABS: { id: string; groups: string[] }[] = [
   { id: 'Connections', groups: ['TorBox', 'Prowlarr', 'TMDB', 'TVDB', 'Plex'] },
@@ -129,7 +138,7 @@ const byTitle = Object.fromEntries(groups.map((g) => [g.title, g]))
 export function Settings() {
   const [data, setData] = useState<SettingsResponse | null>(null)
   const [edits, setEdits] = useState<Record<string, string>>({})
-  const [tests, setTests] = useState<Record<string, string>>({})
+  const [tests, setTests] = useState<Record<string, TestState>>({})
   const [tab, setTab] = useState('Connections')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
@@ -160,11 +169,16 @@ export function Settings() {
   }
 
   async function test(svc: string, body: Record<string, string>) {
-    setTests({ ...tests, [svc]: 'testing…' })
+    setTests((t) => ({ ...t, [svc]: 'pending' }))
     try {
       const r = await postJSON<{ ok: boolean; detail: string }>(`/settings/test/${svc}`, body)
-      setTests((t) => ({ ...t, [svc]: (r.ok ? '✓ ' : '✗ ') + r.detail }))
-    } catch (e) { setTests((t) => ({ ...t, [svc]: '✗ ' + String(e) })) }
+      setTests((t) => ({
+        ...t,
+        [svc]: { ok: r.ok, text: r.ok ? (r.detail || 'Connected') : `Couldn’t connect — ${r.detail || 'check the values above'}` },
+      }))
+    } catch {
+      setTests((t) => ({ ...t, [svc]: { ok: false, text: 'Couldn’t connect — no response from that URL' } }))
+    }
   }
 
   // Persist a single key immediately (used by the one-click key generators).
@@ -180,14 +194,19 @@ export function Settings() {
   function renderGroup(g: typeof groups[number]) {
     const gs = groupService[g.title]
     const svcStatus = gs ? data!.configured[gs.svc] : undefined
+    const role = ROLES[g.title]
+    const id = `fs-${g.title.replace(/\W+/g, '-')}`
+    const ts = gs ? tests[gs.svc] : undefined
     return (
-      <div key={g.title} className="fieldset">
-        <div className="legend" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {g.title}
+      <div key={g.title} className="fieldset" role="group" aria-labelledby={id}>
+        <div className="fs-head">
+          <span className="fs-tile" aria-hidden="true">{initials(g.title)}</span>
+          <div className="fs-id">
+            <span className="fs-name" id={id}>{g.title}</span>
+            {role && <span className="fs-role">{role}</span>}
+          </div>
           {svcStatus !== undefined && (
-            <span className={`status ${svcStatus ? 'available' : 'missing'}`} style={{ marginLeft: 'auto' }}>
-              {svcStatus ? 'connected' : 'not set'}
-            </span>
+            <span className={`status ${svcStatus ? 'available' : 'idle'}`}>{svcStatus ? 'connected' : 'not set'}</span>
           )}
         </div>
         {g.fields.map((f) => (
@@ -202,7 +221,7 @@ export function Settings() {
               <>
                 <label htmlFor={f.key}>{f.label}</label>
                 <input id={f.key} className="input" type={f.secret ? 'password' : 'text'}
-                  placeholder={f.secret ? secretPlaceholder(f.key, data!) : ''}
+                  placeholder={f.secret ? secretPlaceholder(f.key, data!) : (f.placeholder ?? '')}
                   value={valueOf(f.key, f.secret)}
                   onChange={(e) => setEdits({ ...edits, [f.key]: e.target.value })} />
               </>
@@ -211,10 +230,12 @@ export function Settings() {
         ))}
         {gs && (
           <div className="test-line">
-            <button className="btn btn-sm" onClick={() => void test(gs.svc, gs.body((k) => edits[k] ?? ''))}>
+            <button className="btn" onClick={() => void test(gs.svc, gs.body((k) => edits[k] ?? ''))}>
               <Icon name="refresh" /> Test connection
             </button>
-            <span className={testTone(tests[gs.svc])}>{tests[gs.svc] ?? ''}</span>
+            <span role="status" aria-live="polite" className={testTone(ts)}>
+              {ts === 'pending' ? 'Testing…' : (ts ? ts.text : '')}
+            </span>
           </div>
         )}
       </div>
@@ -278,7 +299,7 @@ export function Settings() {
         </div>
       ) : (
         <>
-          <div className="settings-grid">
+          <div className={tab === 'Connections' ? 'settings-stack' : 'settings-grid'}>
             {active.groups.map((title) => byTitle[title] && renderGroup(byTitle[title]))}
           </div>
           <div className="save-bar">
@@ -304,11 +325,11 @@ function copy(text: string): void {
   void navigator.clipboard?.writeText(text)
 }
 
-function testTone(v?: string): string {
-  if (!v) return ''
-  if (v.startsWith('✓')) return 'test-ok'
-  if (v.startsWith('✗')) return 'test-bad'
-  return ''
+type TestState = 'pending' | { ok: boolean; text: string }
+
+function testTone(t?: TestState): string {
+  if (!t || t === 'pending') return ''
+  return t.ok ? 'test-ok' : 'test-bad'
 }
 
 function secretPlaceholder(key: string, data: SettingsResponse): string {

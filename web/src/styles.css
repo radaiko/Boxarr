@@ -151,7 +151,10 @@ a { color: var(--accent-2); text-decoration: none; }
 .btn-danger:hover { background: #3a1d29; border-color: var(--danger); }
 .btn-sm { padding: 6px 10px; font-size: 12.5px; border-radius: 6px; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn:focus-visible, .input:focus-visible, .nav-item:focus-visible { outline: none; box-shadow: var(--ring); }
+.btn:focus-visible, .input:focus-visible, .nav-item:focus-visible,
+.tab:focus-visible, .field-row input[type=checkbox]:focus-visible, a:focus-visible { outline: none; box-shadow: var(--ring); }
+.field-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 /* ── Inputs ────────────────────────────────────────────────────────────── */
 .input {
@@ -210,6 +213,7 @@ a { color: var(--accent-2); text-decoration: none; }
 .status.searching { color: var(--cyan); border-color: #14454c; background: #0c2226; }
 .status.wanted { color: var(--accent); border-color: #5a4015; background: #241a08; }
 .status.missing { color: var(--text-faint); }
+.status.idle { color: var(--text-faint); border-color: var(--border); background: var(--surface-2); }
 .status.broken, .status.expired_broken, .status.failed { color: var(--danger); border-color: #5a2330; background: #251119; }
 
 .chip {
@@ -269,17 +273,38 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 /* ── Forms (settings) ──────────────────────────────────────────────────── */
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+/* Connections uses a single constrained column — a top-to-bottom setup checklist,
+   no ragged 2-col height gaps. */
+.settings-stack { display: flex; flex-direction: column; gap: 14px; max-width: 760px; }
+.settings-stack .fieldset { width: 100%; }
+.settings-stack .field .input { max-width: 520px; }
+
+/* Per-connection header: amber monogram tile + name + role + status pill. */
+.fs-head { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+.fs-tile {
+  width: 30px; height: 30px; flex: none; display: grid; place-items: center;
+  border-radius: 8px; background: var(--accent-soft); border: 1px solid #5a4015;
+  color: var(--accent); font-family: var(--mono); font-weight: 700; font-size: 11px;
+}
+.fs-id { display: flex; flex-direction: column; min-width: 0; }
+.fs-name { font-family: var(--mono); font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text); }
+.fs-role { font-size: 11.5px; color: var(--text-dim); margin-top: 1px; }
+.fs-head .status { margin-left: auto; }
 .fieldset { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
 .fieldset > legend, .fieldset > .legend {
   font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
   color: var(--accent); padding: 0; margin-bottom: 12px; font-weight: 600;
 }
-.field { display: grid; grid-template-columns: 1fr; gap: 5px; margin-bottom: 12px; }
+.field { display: grid; grid-template-columns: 1fr; gap: 4px; margin-bottom: 10px; }
 .field:last-child { margin-bottom: 0; }
 .field label { font-size: 12.5px; color: var(--text-dim); }
 .field .input { width: 100%; }
 .field-row { display: flex; align-items: center; gap: 10px; }
-.test-line { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+.test-line {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft);
+  font-family: var(--mono); font-size: 12px; color: var(--text-dim);
+}
 .test-ok { color: var(--ok); } .test-bad { color: var(--danger); }
 .save-bar {
   position: sticky; bottom: 0; margin-top: 20px; padding: 14px 0;
