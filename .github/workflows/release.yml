@@ -28,6 +28,13 @@ jobs:
       packages: write # push to GHCR
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need tags for git describe
+      - name: compute version
+        id: ver
+        # Real version even for :latest (main) builds — nearest tag + commits
+        # ahead + sha, e.g. 0.0.12-dev-3-gabc123. Tag builds describe exactly.
+        run: echo "value=$(git describe --tags --always 2>/dev/null | sed 's/^v//' || echo dev)" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: log in to GHCR
@@ -56,7 +63,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ steps.ver.outputs.value }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
       - name: github release

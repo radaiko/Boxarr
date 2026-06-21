@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { getJSON, postJSON, posterURL } from '../api'
 import { Icon } from '../ui'
 
@@ -48,7 +49,9 @@ export function AdoptPicker({ ids, defaultKind, defaultTerm, onClose, onDone }: 
     } catch (e) { setErr(shorten(String(e))); setAdopting(false) }
   }
 
-  return (
+  // Portal to <body> so the fixed overlay isn't constrained/clipped by the table
+  // cell the trigger button lives in.
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Add to library">
         <div className="modal-head">
@@ -94,7 +97,8 @@ export function AdoptPicker({ ids, defaultKind, defaultTerm, onClose, onDone }: 
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
