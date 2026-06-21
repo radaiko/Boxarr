@@ -336,47 +336,22 @@ func (w *Workers) startHeal(ctx context.Context, j *job.Job, brokenCount int) {
 	log := w.logger.With("job_id", j.ID, "name", j.NZBName, "protocol", j.Protocol)
 	w.emitHealEvent("detected", j, healEventExtra{})
 
-	var newTorBoxID int64
-	var newHash string
-	if j.Protocol == "torrent" {
-		if j.TorrentMagnet == "" && len(j.TorrentFile) == 0 {
-			log.Error("heal: no stored torrent artifact to resubmit")
-			w.markHealFailed(ctx, j, "no stored torrent artifact")
-			return
+	newTorBoxID, newHash, err := w.resubmitStored(ctx, j)
+	if err != nil {
+		// FR-HEAL-2 / 00 §19.4: the stored artifact is gone or dead. When enabled,
+		// fall back to a fresh Prowlarr re-search + grab and resubmit that instead.
+		if w.set.HealProwlarrFallback() && w.set.ProwlarrURL() != "" {
+			if id, hash, rerr := w.researchAndResubmit(ctx, j); rerr == nil {
+				newTorBoxID, newHash, err = id, hash, nil
+				log.Info("heal: recovered via prowlarr re-search")
+			} else {
+				log.Warn("heal: prowlarr re-search fallback failed", "error", rerr)
+			}
 		}
-		res, err := w.tb.CreateTorrent(ctx, torbox.TorrentCreateRequest{
-			Magnet:         j.TorrentMagnet,
-			TorrentContent: j.TorrentFile,
-			TorrentName:    j.NZBName,
-		})
-		if err != nil {
-			log.Warn("heal: torrent resubmission failed", "error", err)
-			w.markHealFailed(ctx, j, "torrent resubmission failed: "+err.Error())
-			return
-		}
-		newTorBoxID = int64(res.TorrentID)
-		if newTorBoxID == 0 {
-			newTorBoxID = int64(res.QueuedID)
-		}
-		newHash = res.Hash
-	} else {
-		if len(j.NZBContent) == 0 && j.NZBURL == "" {
-			log.Error("heal: no stored NZB to resubmit")
-			w.markHealFailed(ctx, j, "no stored NZB content")
-			return
-		}
-		res, err := w.tb.CreateUsenetDownload(ctx, torbox.CreateRequest{
-			NZBContent: j.NZBContent,
-			NZBName:    j.NZBName + ".nzb",
-			Link:       j.NZBURL,
-		})
-		if err != nil {
-			log.Warn("heal: resubmission failed", "error", err)
-			w.markHealFailed(ctx, j, "resubmission failed: "+err.Error())
-			return
-		}
-		newTorBoxID = int64(res.UsenetDownloadID)
-		newHash = res.Hash
+	}
+	if err != nil {
+		w.markHealFailed(ctx, j, "heal resubmission failed: "+err.Error())
+		return
 	}
 
 	j.State = job.StateHealing

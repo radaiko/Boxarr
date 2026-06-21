@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getJSON, putJSON } from '../api'
+import { getJSON, putJSON, postJSON } from '../api'
 
 interface Note {
   id: number
@@ -28,6 +28,10 @@ export function Notifications() {
     await putJSON('/notifications/read-all', {})
     reload()
   }
+  async function act(id: number, action: string) {
+    await postJSON(`/notifications/${id}/action`, { action })
+    reload()
+  }
 
   if (err) return <p>Error: {err}</p>
 
@@ -42,6 +46,12 @@ export function Notifications() {
         {notes.map((n) => (
           <li key={n.id} style={{ fontWeight: n.read ? 'normal' : 'bold' }}>
             <code>{n.type}</code> — {summarize(n)} <small>{n.createdAt}</small>{' '}
+            {n.type === 'unknown_content' && !n.read && (
+              <>
+                <button onClick={() => void act(n.id, 'ignore')}>Keep</button>{' '}
+                <button onClick={() => void act(n.id, 'delete')}>Delete from TorBox</button>{' '}
+              </>
+            )}
             {!n.read && <button onClick={() => void markRead(n.id)}>✓</button>}
           </li>
         ))}

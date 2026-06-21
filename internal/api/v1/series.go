@@ -1,11 +1,13 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
@@ -204,6 +206,95 @@ func (h *Handler) setSeriesMonitored(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"id": id, "monitored": body.Monitored})
+}
+
+// setSeasonMonitored toggles a season's monitored flag and cascades it to the
+// season's episodes (re-deriving wanted/missing for aired, file-less ones).
+func (h *Handler) setSeasonMonitored(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.idParam(w, r)
+	if !ok {
+		return
+	}
+	season, err := strconv.Atoi(chi.URLParam(r, "season"))
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "invalid season")
+		return
+	}
+	var body struct {
+		Monitored bool `json:"monitored"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "invalid body")
+		return
+	}
+	ctx := r.Context()
+	seasons, _ := h.deps.Store.ListSeasons(ctx, id)
+	var seasonID int64
+	for _, s := range seasons {
+		if s.SeasonNumber == season {
+			seasonID = s.ID
+		}
+	}
+	if seasonID == 0 {
+		h.writeError(w, http.StatusNotFound, "not_found", "season not found")
+		return
+	}
+	if err := h.deps.Store.SetSeasonMonitored(ctx, seasonID, body.Monitored); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "internal", "updating season")
+		return
+	}
+	episodes, _ := h.deps.Store.ListEpisodes(ctx, id)
+	for _, e := range episodes {
+		if e.SeasonNumber == season {
+			h.applyEpisodeMonitor(ctx, e, body.Monitored)
+		}
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"seasonNumber": season, "monitored": body.Monitored})
+}
+
+// setEpisodeMonitored toggles one episode's monitored flag.
+func (h *Handler) setEpisodeMonitored(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.idParam(w, r); !ok {
+		return
+	}
+	epID, err := strconv.ParseInt(chi.URLParam(r, "episodeId"), 10, 64)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "invalid episode id")
+		return
+	}
+	var body struct {
+		Monitored bool `json:"monitored"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "invalid body")
+		return
+	}
+	ctx := r.Context()
+	ep, err := h.deps.Store.GetEpisode(ctx, epID)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "not_found", "episode not found")
+		return
+	}
+	h.applyEpisodeMonitor(ctx, ep, body.Monitored)
+	h.writeJSON(w, http.StatusOK, map[string]any{"id": epID, "monitored": body.Monitored})
+}
+
+// applyEpisodeMonitor sets monitored and re-derives status: an aired, file-less,
+// now-monitored episode becomes wanted; unmonitoring a non-available one → missing.
+func (h *Handler) applyEpisodeMonitor(ctx context.Context, ep *media.Episode, monitored bool) {
+	ep.Monitored = monitored
+	if !ep.HasFile {
+		today := time.Now().UTC().Format("2006-01-02")
+		switch {
+		case monitored && ep.AirDate != "" && ep.AirDate <= today:
+			ep.Status = media.MediaWanted
+		case !monitored:
+			ep.Status = media.MediaMissing
+		}
+	}
+	if err := h.deps.Store.UpdateEpisode(ctx, ep); err != nil {
+		h.deps.Logger.Error("updating episode monitor", "episode_id", ep.ID, "error", err)
+	}
 }
 
 func (h *Handler) deleteSeries(w http.ResponseWriter, r *http.Request) {

@@ -82,6 +82,52 @@ func (s *Store) MarkWebDAVItemsBrokenNotSeenSince(ctx context.Context, sweep tim
 	return res.RowsAffected()
 }
 
+// GetWebDAVItemByPath returns the mount item at remotePath (or sql.ErrNoRows).
+func (s *Store) GetWebDAVItemByPath(ctx context.Context, remotePath string) (*webdav.WebDAVItem, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+webdavItemColumns+` FROM webdav_item WHERE remote_path = ?`, remotePath)
+	return scanWebDAVItem(row)
+}
+
+// SetWebDAVItemKnown flags a mount item known (adopt/ignore: stop re-flagging it).
+func (s *Store) SetWebDAVItemKnown(ctx context.Context, remotePath string, known bool) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE webdav_item SET known = ? WHERE remote_path = ?`, b2i(known), remotePath)
+	if err != nil {
+		return fmt.Errorf("setting webdav item known: %w", err)
+	}
+	return nil
+}
+
+// DeleteWebDAVItemByPath removes a mount item row (after deleting it on TorBox).
+func (s *Store) DeleteWebDAVItemByPath(ctx context.Context, remotePath string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM webdav_item WHERE remote_path = ?`, remotePath)
+	if err != nil {
+		return fmt.Errorf("deleting webdav item: %w", err)
+	}
+	return nil
+}
+
+// WebDAVUsageByCategory returns non-broken mount bytes grouped by category (FR-ST-3).
+func (s *Store) WebDAVUsageByCategory(ctx context.Context) (map[string]int64, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT category, COALESCE(SUM(size),0) FROM webdav_item WHERE is_broken=0 GROUP BY category`)
+	if err != nil {
+		return nil, fmt.Errorf("summing webdav usage by category: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]int64{}
+	for rows.Next() {
+		var cat string
+		var n int64
+		if err := rows.Scan(&cat, &n); err != nil {
+			return nil, err
+		}
+		out[cat] = n
+	}
+	return out, rows.Err()
+}
+
 // WebDAVUsageBytes returns the total size of non-broken mount items (FR-ST-1).
 func (s *Store) WebDAVUsageBytes(ctx context.Context) (int64, error) {
 	var n int64
