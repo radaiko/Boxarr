@@ -45,23 +45,25 @@ func decodeReleaseID(id string) (grabRef, error) {
 }
 
 type releaseDTO struct {
-	ReleaseID       string `json:"releaseId"`
-	Title           string `json:"title"`
-	Indexer         string `json:"indexer"`
-	IndexerID       int    `json:"indexerId"`
-	Protocol        string `json:"protocol"`
-	Size            int64  `json:"size"`
-	Quality         string `json:"quality,omitempty"`
-	Resolution      string `json:"resolution,omitempty"`
-	Seeders         *int   `json:"seeders,omitempty"`
-	Leechers        *int   `json:"leechers,omitempty"`
-	Grabs           *int   `json:"grabs,omitempty"`
-	Cached          *bool  `json:"cached"`
-	Score           int    `json:"score"`
-	Rejected        bool   `json:"rejected"`
-	RejectionReason string `json:"rejectionReason,omitempty"`
-	HasMagnet       bool   `json:"hasMagnet"`
-	PublishDate     string `json:"publishDate,omitempty"`
+	ReleaseID       string   `json:"releaseId"`
+	Title           string   `json:"title"`
+	Indexer         string   `json:"indexer"`
+	IndexerID       int      `json:"indexerId"`
+	Protocol        string   `json:"protocol"`
+	Size            int64    `json:"size"`
+	Quality         string   `json:"quality,omitempty"`
+	Resolution      string   `json:"resolution,omitempty"`
+	Languages       []string `json:"languages,omitempty"`
+	Subs            bool     `json:"subs,omitempty"`
+	Seeders         *int     `json:"seeders,omitempty"`
+	Leechers        *int     `json:"leechers,omitempty"`
+	Grabs           *int     `json:"grabs,omitempty"`
+	Cached          *bool    `json:"cached"`
+	Score           int      `json:"score"`
+	Rejected        bool     `json:"rejected"`
+	RejectionReason string   `json:"rejectionReason,omitempty"`
+	HasMagnet       bool     `json:"hasMagnet"`
+	PublishDate     string   `json:"publishDate,omitempty"`
 }
 
 func (h *Handler) searchMovie(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +178,7 @@ func toReleaseDTO(rr prowlarr.ReleaseResource, sc selection.Scored, resolution s
 		}),
 		Title: rr.Title, Indexer: rr.Indexer, IndexerID: rr.IndexerID, Protocol: rr.Protocol,
 		Size: rr.Size, Quality: sc.Release.Quality, Resolution: resolution,
+		Languages: release.DetectLanguages(rr.Title), Subs: release.HasEnglishSubs(rr.Title),
 		Score: sc.Score, Rejected: sc.Score == math.MinInt, HasMagnet: rr.MagnetURL != "",
 		PublishDate: rr.PublishDate,
 	}

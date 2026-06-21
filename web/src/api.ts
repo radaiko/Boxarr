@@ -105,6 +105,9 @@ export interface Release {
   protocol: string
   size: number
   quality?: string
+  resolution?: string
+  languages?: string[]
+  subs?: boolean
   seeders?: number
   grabs?: number
   cached: boolean | null

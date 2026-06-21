@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { getJSON, postJSON, del, posterURL, type Movie, type Release, type ListResponse } from '../api'
 import { Icon, Status, Loading, initials, FilePanel } from '../ui'
-import { ReleaseTable } from './ReleaseTable'
+import { SearchOverlay } from './SearchOverlay'
 
 export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) {
   const [movie, setMovie] = useState<Movie | null>(null)
   const [releases, setReleases] = useState<Release[] | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [msgOk, setMsgOk] = useState(false)
@@ -15,14 +16,14 @@ export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) 
   }, [id])
 
   async function search() {
-    setBusy(true); setMsg(''); setReleases(null)
+    setSearchOpen(true); setBusy(true); setMsg(''); setReleases(null)
     try {
       const r = await getJSON<ListResponse<Release>>(`/movies/${id}/search`)
       setReleases(r.items)
-      if (r.items.length === 0) { setMsg('No releases found.'); setMsgOk(false) }
-    } catch (e) { setMsg(String(e)); setMsgOk(false) } finally { setBusy(false) }
+    } catch (e) { setMsg(String(e)); setMsgOk(false); setSearchOpen(false) } finally { setBusy(false) }
   }
   async function grab(rel: Release) {
+    setSearchOpen(false)
     setMsg(`Grabbing ${rel.title}…`); setMsgOk(false)
     await postJSON(`/movies/${id}/grab`, { releaseId: rel.releaseId })
     setMsg('Grabbed — download queued on TorBox.'); setMsgOk(true); setReleases(null)
@@ -59,9 +60,9 @@ export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) 
         </div>
       </div>
 
-      {busy && <Loading />}
-      {releases && releases.length > 0 && (
-        <div style={{ marginTop: 22 }}><ReleaseTable releases={releases} onGrab={(r) => void grab(r)} /></div>
+      {searchOpen && (
+        <SearchOverlay title={`${movie.title}${movie.year ? ` (${movie.year})` : ''}`} releases={releases ?? []}
+          currentName={movie.file?.name} busy={busy} onGrab={(r) => void grab(r)} onClose={() => setSearchOpen(false)} />
       )}
     </section>
   )
