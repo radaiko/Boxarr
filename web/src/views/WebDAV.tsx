@@ -54,10 +54,12 @@ export function WebDAV() {
   function reload(): Promise<void> {
     return getJSON<{ items: Item[] }>('/webdav')
       .then((r) => {
-        setItems(r.items); setErr(''); setSelected(new Set())
-        // Drop ids that have actually been removed; keep those still present
-        // (their background delete hasn't finished).
-        setDeleting((prev) => new Set([...prev].filter((id) => r.items.some((it) => it.id === id))))
+        setItems(r.items); setErr('')
+        // Prune (don't clear) selection + deleting to ids that still exist, so the
+        // 3s auto-poll never wipes a selection the user is building mid-delete.
+        const present = (id: number) => r.items.some((it) => it.id === id)
+        setSelected((prev) => new Set([...prev].filter(present)))
+        setDeleting((prev) => new Set([...prev].filter(present)))
       })
       .catch((e: unknown) => setErr(String(e)))
   }
