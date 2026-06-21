@@ -76,12 +76,12 @@ func TestAdoptWebDAVUsesRequestedKind(t *testing.T) {
 	ad := &fakeAdopter{}
 	h := NewHandler(Deps{Store: st, Settings: set, Adopter: ad, Logger: discardLog()}).Router()
 
-	rec := req(t, h, http.MethodPost, "/webdav/"+itoa(it.ID)+"/adopt", "", "127.0.0.1:1", `{"kind":"anime"}`)
+	rec := req(t, h, http.MethodPost, "/webdav/"+itoa(it.ID)+"/adopt", "", "127.0.0.1:1", `{"kind":"anime","tmdbId":12345}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("adopt = %d body=%s", rec.Code, rec.Body.String())
 	}
-	if !ad.called || ad.kind != "anime" || ad.name != "Frieren.S01E12.1080p.WEB.x264" {
-		t.Fatalf("adopter called=%v kind=%q name=%q", ad.called, ad.kind, ad.name)
+	if !ad.called || ad.kind != "anime" || ad.name != "Frieren.S01E12.1080p.WEB.x264" || ad.tmdbID != 12345 {
+		t.Fatalf("adopter called=%v kind=%q name=%q tmdbId=%d", ad.called, ad.kind, ad.name, ad.tmdbID)
 	}
 }
 

@@ -29,7 +29,7 @@ func TestAdoptUnknownImportsToLibrary(t *testing.T) {
 
 	// Resolver creates the movie row and returns ("movie", id).
 	var movieID int64
-	w.SetAdoptResolver(resolverFunc(func(c context.Context, name, kind string) (string, int64, error) {
+	w.SetAdoptResolver(resolverFunc(func(c context.Context, name, kind string, tmdbID int64) (string, int64, error) {
 		id, err := st.CreateMovie(c, &media.Movie{TMDBID: 603, Title: "The Matrix", Year: 1999,
 			Monitored: true, Status: media.MediaMissing, RootFolderPath: libRoot})
 		movieID = id
@@ -38,7 +38,7 @@ func TestAdoptUnknownImportsToLibrary(t *testing.T) {
 	// A matching TorBox torrent so the adopted job links its download.
 	fake.torrentList = []torbox.TorrentDownload{{ID: 77, Name: relName, Hash: "abc"}}
 
-	if err := w.AdoptUnknown(ctx, srcDir, relName, ""); err != nil {
+	if err := w.AdoptUnknown(ctx, srcDir, relName, "", 0); err != nil {
 		t.Fatalf("AdoptUnknown: %v", err)
 	}
 
@@ -64,7 +64,7 @@ func TestAdoptUnknownImportsToLibrary(t *testing.T) {
 
 func TestAdoptUnknownNoResolver(t *testing.T) {
 	w, _, _ := testWorkers(t, &fakeTorBox{})
-	if err := w.AdoptUnknown(context.Background(), "/mnt/x", "X", ""); err == nil {
+	if err := w.AdoptUnknown(context.Background(), "/mnt/x", "X", "", 0); err == nil {
 		t.Error("adopt without a resolver should error")
 	}
 }
@@ -81,14 +81,14 @@ func TestAdoptUnknownRollsBackOnImportFailure(t *testing.T) {
 	os.MkdirAll(srcDir, 0o755)
 
 	var movieID int64
-	w.SetAdoptResolver(resolverFunc(func(c context.Context, name, kind string) (string, int64, error) {
+	w.SetAdoptResolver(resolverFunc(func(c context.Context, name, kind string, tmdbID int64) (string, int64, error) {
 		id, err := st.CreateMovie(c, &media.Movie{TMDBID: 9, Title: "Empty Movie", Year: 2024,
 			Monitored: true, Status: media.MediaMissing})
 		movieID = id
 		return "movie", id, err
 	}))
 
-	if err := w.AdoptUnknown(ctx, srcDir, relName, ""); err == nil {
+	if err := w.AdoptUnknown(ctx, srcDir, relName, "", 0); err == nil {
 		t.Fatal("adopt of a folder with no video should fail")
 	}
 	// Rollback: the placeholder job is gone and the movie is not falsely available.
@@ -101,8 +101,8 @@ func TestAdoptUnknownRollsBackOnImportFailure(t *testing.T) {
 }
 
 // resolverFunc adapts a func to the AdoptResolver interface.
-type resolverFunc func(ctx context.Context, name, kind string) (string, int64, error)
+type resolverFunc func(ctx context.Context, name, kind string, tmdbID int64) (string, int64, error)
 
-func (f resolverFunc) ResolveAdopt(ctx context.Context, name, kind string) (string, int64, error) {
-	return f(ctx, name, kind)
+func (f resolverFunc) ResolveAdopt(ctx context.Context, name, kind string, tmdbID int64) (string, int64, error) {
+	return f(ctx, name, kind, tmdbID)
 }

@@ -203,7 +203,8 @@ func (h *Handler) adoptWebDAV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Kind string `json:"kind"` // movie | series | anime | "" (auto)
+		Kind   string `json:"kind"`   // movie | series | anime | "" (auto)
+		TMDBID int64  `json:"tmdbId"` // 0 = auto-match by name; >0 = the picked match
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	ctx := r.Context()
@@ -232,7 +233,10 @@ func (h *Handler) adoptWebDAV(w http.ResponseWriter, r *http.Request) {
 	if kind == "" {
 		kind, _, _, _ = classifyRelease(item.Name)
 	}
-	if err := h.deps.Adopter.AdoptUnknown(ctx, item.RemotePath, item.Name, kind); err != nil {
+	if err := h.deps.Adopter.AdoptUnknown(ctx, item.RemotePath, item.Name, kind, body.TMDBID); err != nil {
+		// Log it too — otherwise the reason only reaches the browser (it was
+		// invisible in the container logs).
+		h.deps.Logger.Warn("webdav adopt failed", "name", item.Name, "kind", kind, "tmdbId", body.TMDBID, "error", err)
 		h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 		return
 	}

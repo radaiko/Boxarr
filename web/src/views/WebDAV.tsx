@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import { getJSON, postJSON } from '../api'
 import { Icon, Empty, Loading, ErrorBanner, gb } from '../ui'
+import { AdoptPicker } from './AdoptPicker'
 
 interface Item {
   id: number
@@ -171,31 +172,22 @@ function FlatTable({ items, adoptKind, reload }: { items: Item[]; adoptKind: str
   )
 }
 
-// AdoptBtn imports the given items into the library. Items adopt sequentially so
-// a series' catalog row is created once, then each file imports into it. A failed
-// item doesn't abort the batch; the view always refreshes afterwards.
+// AdoptBtn opens a search-and-pick dialog so the user chooses the exact TMDB
+// match, then imports the item(s) into it. For a show, all unknown episodes adopt
+// into the one picked series.
 function AdoptBtn({ items, kind, reload, label }: { items: Item[]; kind: string; reload: () => Promise<void>; label?: string }) {
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
+  const [open, setOpen] = useState(false)
   const lbl = label ?? 'Add to library'
-  async function run(e: MouseEvent) {
-    stop(e)
-    setBusy(true); setErr('')
-    let fails = 0
-    for (const it of items) {
-      try { await postJSON(`/webdav/${it.id}/adopt`, { kind }) } catch { fails++ }
-    }
-    if (fails > 0) setErr(`${fails} couldn’t be added`)
-    await reload()
-    setBusy(false)
-  }
+  const term = items[0]?.title || items[0]?.name || ''
   return (
     <span className="confirm-del" onClick={stop}>
-      <button className="btn-icon" aria-label={lbl} title={lbl} onClick={run} disabled={busy}>
+      <button className="btn-icon" aria-label={lbl} title={lbl} onClick={(e) => { stop(e); setOpen(true) }}>
         <Icon name="plus" />
       </button>
-      {busy && <span className="muted" style={{ fontSize: 11 }}>adding…</span>}
-      {err && <span className="test-bad" style={{ fontSize: 11 }}>{err}</span>}
+      {open && (
+        <AdoptPicker ids={items.map((i) => i.id)} defaultKind={kind || 'movie'} defaultTerm={term}
+          onClose={() => setOpen(false)} onDone={reload} />
+      )}
     </span>
   )
 }

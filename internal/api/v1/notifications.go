@@ -126,7 +126,7 @@ func (h *Handler) notificationAction(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusServiceUnavailable, "unavailable", "adopt not wired")
 			return
 		}
-		if err := h.deps.Adopter.AdoptUnknown(ctx, p.RemotePath, p.Name, ""); err != nil {
+		if err := h.deps.Adopter.AdoptUnknown(ctx, p.RemotePath, p.Name, "", 0); err != nil {
 			h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 			return
 		}

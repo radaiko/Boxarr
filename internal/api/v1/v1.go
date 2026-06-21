@@ -31,7 +31,7 @@ type Reconciler interface {
 // Adopter imports an already-present unknown WebDAV folder into the library
 // (satisfied by worker.Workers).
 type Adopter interface {
-	AdoptUnknown(ctx context.Context, remotePath, name, kind string) error
+	AdoptUnknown(ctx context.Context, remotePath, name, kind string, tmdbID int64) error
 }
 
 // Deleter tears down a tracked download's import (symlinks + catalog + job) so

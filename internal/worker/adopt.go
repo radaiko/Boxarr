@@ -10,7 +10,7 @@ import (
 // AdoptResolver resolves an unknown release folder name to a catalog link,
 // creating the catalog row if needed (satisfied by *catalog.Service).
 type AdoptResolver interface {
-	ResolveAdopt(ctx context.Context, name, kind string) (mediaType string, mediaRef int64, err error)
+	ResolveAdopt(ctx context.Context, name, kind string, tmdbID int64) (mediaType string, mediaRef int64, err error)
 }
 
 // SetAdoptResolver wires the catalog resolver used by AdoptUnknown.
@@ -26,11 +26,11 @@ func (w *Workers) RemoveImport(ctx context.Context, jobID int64) { w.rollbackImp
 // library (FR-NC-2 adopt): it resolves/creates the catalog entry, links the
 // existing TorBox download (so a later delete propagates), synthesizes a job, and
 // runs the normal importer over the existing folder — then marks the item known.
-func (w *Workers) AdoptUnknown(ctx context.Context, remotePath, name, kind string) error {
+func (w *Workers) AdoptUnknown(ctx context.Context, remotePath, name, kind string, tmdbID int64) error {
 	if w.adoptResolver == nil {
 		return fmt.Errorf("adopt: no resolver configured")
 	}
-	mediaType, mediaRef, err := w.adoptResolver.ResolveAdopt(ctx, name, kind)
+	mediaType, mediaRef, err := w.adoptResolver.ResolveAdopt(ctx, name, kind, tmdbID)
 	if err != nil {
 		return fmt.Errorf("adopt: resolving %q: %w", name, err)
 	}
