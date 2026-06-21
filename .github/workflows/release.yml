@@ -1,16 +1,31 @@
 name: release
 
+# Publishes the multi-arch image to GHCR (ghcr.io/radaiko/boxarr).
+#
+#   • push to main            → :latest, :dev, :main-<sha>   (rolling dev builds)
+#   • push tag vX.Y.Z[-pre]   → :X.Y.Z[-pre] (+ :X.Y for stable) + a GitHub Release
+#                               (marked prerelease when the tag has a -suffix)
+#   • manual "Run workflow"   → the version you type (default 0.0.1-dev)
+#
+# To cut the first dev image:  git tag v0.0.1-dev && git push origin v0.0.1-dev
+# (or run this workflow from the Actions tab — it defaults to 0.0.1-dev).
 on:
   push:
     branches: [main]
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image tag to publish (e.g. 0.0.1-dev)'
+        required: true
+        default: '0.0.1-dev'
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: write # create GitHub Releases on tag push
+      packages: write # push to GHCR
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -28,8 +43,11 @@ jobs:
           images: ghcr.io/radaiko/boxarr
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern=v{{version}}
-            type=semver,pattern=v{{major}}.{{minor}}
+            type=raw,value=dev,enable={{is_default_branch}}
+            type=sha,prefix=main-,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
       - name: build and push
         uses: docker/build-push-action@v6
         with:
@@ -38,6 +56,12 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VERSION=${{ github.run_number }}
+            VERSION=${{ steps.meta.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - name: github release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
