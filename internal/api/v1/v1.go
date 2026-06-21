@@ -247,3 +247,10 @@ func rfc3339(t time.Time) string {
 	}
 	return t.UTC().Format(time.RFC3339)
 }
+
+func rfc3339ptr(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return rfc3339(*t)
+}

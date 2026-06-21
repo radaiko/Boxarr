@@ -80,6 +80,7 @@ type Episode struct {
 	JobID          int64 // 0 = none
 	LibraryPath    string
 	MetadataJSON   string
+	LastSearchedAt *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

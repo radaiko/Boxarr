@@ -49,6 +49,7 @@ type episodeDTO struct {
 	Monitored     bool      `json:"monitored"`
 	HasFile       bool      `json:"hasFile"`
 	File          *fileMeta `json:"file,omitempty"`
+	LastSearched  string    `json:"lastSearched,omitempty"`
 }
 
 func seriesRollup(seasons []seasonDTO) string {
@@ -122,7 +123,7 @@ func (h *Handler) getSeries(w http.ResponseWriter, r *http.Request) {
 		bySeason[e.SeasonNumber] = append(bySeason[e.SeasonNumber], episodeDTO{
 			ID: e.ID, SeasonNumber: e.SeasonNumber, EpisodeNumber: e.EpisodeNumber, Title: e.Title,
 			AirDate: e.AirDate, Status: string(e.Status), Monitored: e.Monitored, HasFile: e.HasFile,
-			File: fileMetaFor(targets, e.LibraryPath),
+			File: fileMetaFor(targets, e.LibraryPath), LastSearched: rfc3339ptr(e.LastSearchedAt),
 		})
 	}
 	dto := seriesDTO{
@@ -396,6 +397,7 @@ func (h *Handler) searchEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := fmt.Sprintf("%s S%02dE%02d", s.Title, ep.SeasonNumber, ep.EpisodeNumber)
+	_ = h.deps.Store.MarkEpisodesSearched(ctx, ep.ID)
 	h.runSearch(w, r, prowlarr.SearchParams{Query: q, Type: "tvsearch", Categories: []int{5000}})
 }
 

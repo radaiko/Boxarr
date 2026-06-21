@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJSON, postJSON, putJSON, del, posterURL, type Series, type Episode, type Release, type ListResponse } from '../api'
-import { Icon, Status, Loading, initials, MetaChips } from '../ui'
+import { Icon, Status, Loading, initials, MetaChips, ago } from '../ui'
 import { ReleaseTable } from './ReleaseTable'
 
 export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void }) {
@@ -106,6 +106,7 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
                       )}
                     </td>
                     <td className="num" style={{ width: 110 }}>{ep.airDate || ''}</td>
+                    <td className="muted" style={{ width: 120, fontSize: 11.5 }}>{ep.lastSearched ? `searched ${ago(ep.lastSearched)}` : ''}</td>
                     <td style={{ width: 130 }}><Status value={ep.status} hasFile={ep.hasFile} /></td>
                     <td className="right" style={{ width: 110 }}>
                       <button className="btn btn-sm btn-ghost" onClick={() => void searchEpisode(ep)}><Icon name="search" /> Search</button>

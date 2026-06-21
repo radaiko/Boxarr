@@ -250,28 +250,43 @@ func (s *Store) SetSeasonMonitored(ctx context.Context, id int64, monitored bool
 const episodeColumns = `id, series_id, season_id, season_number, episode_number,
 	absolute_number, tmdb_id, tvdb_id, title, overview, air_date, runtime,
 	still_path, status, monitored, has_file, job_id, library_path,
-	metadata_json, created_at, updated_at`
+	metadata_json, last_searched_at, created_at, updated_at`
 
 func scanEpisode(row scanner) (*media.Episode, error) {
 	var m media.Episode
 	var (
 		absNum, tmdbID, tvdbID, runtime, jobID sql.NullInt64
 		airDate, still, libPath, meta          sql.NullString
+		lastSearched                           sql.NullTime
 		status                                 string
 		monitored, hasFile                     int
 	)
 	if err := row.Scan(&m.ID, &m.SeriesID, &m.SeasonID, &m.SeasonNumber, &m.EpisodeNumber,
 		&absNum, &tmdbID, &tvdbID, &m.Title, &m.Overview, &airDate, &runtime,
 		&still, &status, &monitored, &hasFile, &jobID, &libPath, &meta,
-		&m.CreatedAt, &m.UpdatedAt); err != nil {
+		&lastSearched, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, err
 	}
 	m.AbsoluteNumber, m.TMDBID, m.TVDBID = int(absNum.Int64), tmdbID.Int64, tvdbID.Int64
 	m.Runtime, m.JobID = int(runtime.Int64), jobID.Int64
 	m.AirDate, m.StillPath, m.LibraryPath, m.MetadataJSON = airDate.String, still.String, libPath.String, meta.String
+	if lastSearched.Valid {
+		m.LastSearchedAt = &lastSearched.Time
+	}
 	m.Status = media.MediaStatus(status)
 	m.Monitored, m.HasFile = monitored != 0, hasFile != 0
 	return &m, nil
+}
+
+// MarkEpisodesSearched stamps last_searched_at=now on the given episodes.
+func (s *Store) MarkEpisodesSearched(ctx context.Context, ids ...int64) error {
+	for _, id := range ids {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE episode SET last_searched_at=CURRENT_TIMESTAMP WHERE id=?`, id); err != nil {
+			return fmt.Errorf("marking episode searched: %w", err)
+		}
+	}
+	return nil
 }
 
 // UpsertEpisode inserts an episode or refreshes its metadata. The DO UPDATE path

@@ -94,6 +94,7 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 			continue
 		}
 		q := fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber)
+		_ = s.store.MarkEpisodesSearched(ctx, ep.ID)
 		results, serr := s.search.Search(ctx, prowlarr.SearchParams{Query: q, Type: "tvsearch", Categories: []int{5000}})
 		if serr != nil {
 			s.logSearchErr(q, serr)

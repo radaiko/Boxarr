@@ -166,6 +166,7 @@ export interface Episode {
   monitored: boolean
   hasFile: boolean
   file?: FileMeta
+  lastSearched?: string
 }
 
 export interface SeriesCandidate {
