@@ -48,10 +48,11 @@ type fakeAdopter struct {
 	called bool
 	path   string
 	name   string
+	kind   string
 }
 
-func (f *fakeAdopter) AdoptUnknown(_ context.Context, remotePath, name string) error {
-	f.called, f.path, f.name = true, remotePath, name
+func (f *fakeAdopter) AdoptUnknown(_ context.Context, remotePath, name, kind string) error {
+	f.called, f.path, f.name, f.kind = true, remotePath, name, kind
 	return nil
 }
 

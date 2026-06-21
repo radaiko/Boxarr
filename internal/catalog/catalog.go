@@ -115,6 +115,11 @@ func (s *Service) AddMovie(ctx context.Context, tmdbID int64, monitored bool) (*
 	m.Status = movieStatus(m)
 	id, err := s.store.CreateMovie(ctx, m)
 	if err != nil {
+		// Lost a create race on the unique tmdb_id index (concurrent adopt): if a
+		// row now exists, treat it as already-present rather than a hard error.
+		if existing, _ := s.store.GetMovieByTMDB(ctx, tmdbID); existing != nil {
+			return existing, ErrAlreadyExists
+		}
 		return nil, fmt.Errorf("creating movie: %w", err)
 	}
 	m.ID = id

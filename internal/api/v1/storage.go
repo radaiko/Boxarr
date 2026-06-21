@@ -1,9 +1,12 @@
 package v1
 
 import (
+	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/release"
 	"github.com/radaiko/boxarr/internal/webdav"
@@ -113,6 +116,124 @@ func (h *Handler) refreshWebDAV(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.deps.Reconciler.Reconcile(r.Context()); err != nil {
 		h.writeError(w, http.StatusBadGateway, "upstream_unavailable", err.Error())
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// deleteWebDAV removes one or more mount items (by id): for each it deletes the
+// matching TorBox download when present, removes the release folder from the
+// mount, and drops the row. The TorBox mylists are fetched once for the whole
+// batch so deleting a whole show is a couple of calls, not one per episode.
+func (h *Handler) deleteWebDAV(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "ids is required")
+		return
+	}
+	ctx := r.Context()
+	all, err := h.deps.Store.ListWebDAVItems(ctx)
+	if err != nil {
+		h.serverError(w, "listing webdav items", err)
+		return
+	}
+	byID := make(map[int64]*webdav.WebDAVItem, len(all))
+	for _, it := range all {
+		byID[it.ID] = it
+	}
+	// Index both TorBox mylists once (name → id, case-insensitive).
+	tb := h.deps.Settings.TorBox()
+	tIdx, uIdx := map[string]int64{}, map[string]int64{}
+	if ts, e := tb.ListTorrents(ctx); e == nil {
+		for _, d := range ts {
+			tIdx[strings.ToLower(d.Name)] = int64(d.ID)
+		}
+	}
+	if us, e := tb.ListUsenet(ctx); e == nil {
+		for _, d := range us {
+			uIdx[strings.ToLower(d.Name)] = int64(d.ID)
+		}
+	}
+	deleted, failed := 0, 0
+	for _, id := range body.IDs {
+		it := byID[id]
+		if it == nil {
+			continue
+		}
+		// Tracked item: tear down the import (library symlinks + catalog + job)
+		// first so we never leave a dangling symlink pointing at the deleted file.
+		if it.Known && it.JobID != 0 && h.deps.Deleter != nil {
+			h.deps.Deleter.RemoveImport(ctx, it.JobID)
+		}
+		ln := strings.ToLower(it.Name)
+		if did, ok := tIdx[ln]; ok {
+			if e := tb.ControlTorrent(ctx, did, "delete"); e != nil {
+				h.deps.Logger.Warn("webdav delete (torrent)", "name", it.Name, "error", e)
+			}
+		} else if uid, ok := uIdx[ln]; ok {
+			if e := tb.ControlUsenet(ctx, uid, "delete"); e != nil {
+				h.deps.Logger.Warn("webdav delete (usenet)", "name", it.Name, "error", e)
+			}
+		}
+		h.removeMountFolder(it.RemotePath)
+		if e := h.deps.Store.DeleteWebDAVItemByPath(ctx, it.RemotePath); e != nil {
+			h.deps.Logger.Warn("webdav delete: dropping row", "name", it.Name, "error", e)
+			failed++
+			continue
+		}
+		deleted++
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "failed": failed})
+}
+
+// adoptWebDAV imports an unknown mount item into the library (TMDB match → catalog
+// row → symlink → tracked). kind ("movie"|"series"|"anime", or "" to auto-detect)
+// usually comes from the section the user adopted from, so anime lands in the
+// anime library.
+func (h *Handler) adoptWebDAV(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Adopter == nil {
+		h.writeError(w, http.StatusServiceUnavailable, "unavailable", "adopt not wired")
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "invalid item id")
+		return
+	}
+	var body struct {
+		Kind string `json:"kind"` // movie | series | anime | "" (auto)
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	ctx := r.Context()
+	all, err := h.deps.Store.ListWebDAVItems(ctx)
+	if err != nil {
+		h.serverError(w, "listing webdav items", err)
+		return
+	}
+	var item *webdav.WebDAVItem
+	for _, it := range all {
+		if it.ID == id {
+			item = it
+			break
+		}
+	}
+	if item == nil {
+		h.writeError(w, http.StatusNotFound, "not_found", "mount item not found")
+		return
+	}
+	if item.Known {
+		// Already imported — no-op rather than re-running the importer.
+		h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "skipped": "already in library"})
+		return
+	}
+	kind := body.Kind
+	if kind == "" {
+		kind, _, _, _ = classifyRelease(item.Name)
+	}
+	if err := h.deps.Adopter.AdoptUnknown(ctx, item.RemotePath, item.Name, kind); err != nil {
+		h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true})

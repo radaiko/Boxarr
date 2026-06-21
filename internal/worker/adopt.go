@@ -10,21 +10,27 @@ import (
 // AdoptResolver resolves an unknown release folder name to a catalog link,
 // creating the catalog row if needed (satisfied by *catalog.Service).
 type AdoptResolver interface {
-	ResolveAdopt(ctx context.Context, name string) (mediaType string, mediaRef int64, err error)
+	ResolveAdopt(ctx context.Context, name, kind string) (mediaType string, mediaRef int64, err error)
 }
 
 // SetAdoptResolver wires the catalog resolver used by AdoptUnknown.
 func (w *Workers) SetAdoptResolver(a AdoptResolver) { w.adoptResolver = a }
 
+// RemoveImport tears down a completed job's import: it removes the library
+// symlinks it created, reverts the catalog rows back to missing, and drops the
+// job. Used when the user deletes a tracked download from the WebDAV view so no
+// dangling symlink is left behind.
+func (w *Workers) RemoveImport(ctx context.Context, jobID int64) { w.rollbackImport(ctx, jobID) }
+
 // AdoptUnknown imports an already-present (unknown) WebDAV release into the
 // library (FR-NC-2 adopt): it resolves/creates the catalog entry, links the
 // existing TorBox download (so a later delete propagates), synthesizes a job, and
 // runs the normal importer over the existing folder — then marks the item known.
-func (w *Workers) AdoptUnknown(ctx context.Context, remotePath, name string) error {
+func (w *Workers) AdoptUnknown(ctx context.Context, remotePath, name, kind string) error {
 	if w.adoptResolver == nil {
 		return fmt.Errorf("adopt: no resolver configured")
 	}
-	mediaType, mediaRef, err := w.adoptResolver.ResolveAdopt(ctx, name)
+	mediaType, mediaRef, err := w.adoptResolver.ResolveAdopt(ctx, name, kind)
 	if err != nil {
 		return fmt.Errorf("adopt: resolving %q: %w", name, err)
 	}

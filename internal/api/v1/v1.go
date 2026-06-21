@@ -31,7 +31,13 @@ type Reconciler interface {
 // Adopter imports an already-present unknown WebDAV folder into the library
 // (satisfied by worker.Workers).
 type Adopter interface {
-	AdoptUnknown(ctx context.Context, remotePath, name string) error
+	AdoptUnknown(ctx context.Context, remotePath, name, kind string) error
+}
+
+// Deleter tears down a tracked download's import (symlinks + catalog + job) so
+// deleting it from the mount leaves nothing dangling (satisfied by worker.Workers).
+type Deleter interface {
+	RemoveImport(ctx context.Context, jobID int64)
 }
 
 // Deps are the dependencies the /api/v1 handler needs.
@@ -42,6 +48,7 @@ type Deps struct {
 	Health     HealReporter
 	Reconciler Reconciler
 	Adopter    Adopter
+	Deleter    Deleter
 	Logger     *slog.Logger
 	Version    string
 }
@@ -79,6 +86,8 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/storage", h.storage)
 	r.Get("/webdav", h.listWebDAV)
 	r.Post("/webdav/refresh", h.refreshWebDAV)
+	r.Post("/webdav/delete", h.deleteWebDAV)
+	r.Post("/webdav/{id}/adopt", h.adoptWebDAV)
 	r.Get("/series", h.listSeries)
 	r.Get("/series/lookup", h.lookupSeries)
 	r.Get("/series/{id}", h.getSeries)

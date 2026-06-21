@@ -47,7 +47,7 @@ func TestResolveAdoptMovieAndSeries(t *testing.T) {
 	cat := New(st, set)
 
 	// Movie folder → creates the movie, returns ("movie", id).
-	mt, ref, err := cat.ResolveAdopt(ctx, "The.Matrix.1999.1080p.BluRay.x264-GRP")
+	mt, ref, err := cat.ResolveAdopt(ctx, "The.Matrix.1999.1080p.BluRay.x264-GRP", "")
 	if err != nil || mt != "movie" || ref == 0 {
 		t.Fatalf("adopt movie: mt=%q ref=%d err=%v", mt, ref, err)
 	}
@@ -55,7 +55,7 @@ func TestResolveAdoptMovieAndSeries(t *testing.T) {
 		t.Error("movie should be cataloged by adopt")
 	}
 	// Re-adopt the same → ErrAlreadyExists handled → still resolves to the row.
-	if mt2, ref2, err2 := cat.ResolveAdopt(ctx, "The.Matrix.1999.2160p.WEB"); err2 != nil || mt2 != "movie" || ref2 != ref {
+	if mt2, ref2, err2 := cat.ResolveAdopt(ctx, "The.Matrix.1999.2160p.WEB", ""); err2 != nil || mt2 != "movie" || ref2 != ref {
 		t.Fatalf("re-adopt should reuse existing: mt=%q ref=%d err=%v", mt2, ref2, err2)
 	}
 
@@ -64,7 +64,7 @@ func TestResolveAdoptMovieAndSeries(t *testing.T) {
 	if err == nil && st2 != nil {
 		t.Fatal("series should not exist yet")
 	}
-	mt, ref, err = cat.ResolveAdopt(ctx, "Breaking.Bad.S01E01.1080p.WEB-DL")
+	mt, ref, err = cat.ResolveAdopt(ctx, "Breaking.Bad.S01E01.1080p.WEB-DL", "")
 	if err != nil || mt != "series" || ref == 0 {
 		t.Fatalf("adopt series: mt=%q ref=%d err=%v", mt, ref, err)
 	}
@@ -79,7 +79,7 @@ func TestResolveAdoptMovieAndSeries(t *testing.T) {
 
 	// Re-adopt an existing series (ErrAlreadyExists path) still re-syncs episodes
 	// and resolves to the same series id.
-	mt3, ref3, err3 := cat.ResolveAdopt(ctx, "Breaking.Bad.S01E01.2160p.WEB")
+	mt3, ref3, err3 := cat.ResolveAdopt(ctx, "Breaking.Bad.S01E01.2160p.WEB", "")
 	if err3 != nil || mt3 != "series" || ref3 != sr.ID {
 		t.Fatalf("re-adopt existing series: mt=%q ref=%d err=%v", mt3, ref3, err3)
 	}

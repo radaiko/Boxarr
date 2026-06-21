@@ -13,14 +13,21 @@ import (
 // row exists for it, returning the (mediaType, mediaRef) link the worker uses to
 // import it into the library. It parses the folder name, decides movie vs series,
 // searches TMDB, and adds (or reuses, on ErrAlreadyExists) the catalog entry.
-func (s *Service) ResolveAdopt(ctx context.Context, name string) (string, int64, error) {
+// kind hints the target library: "movie", "series", "anime", or "" to auto-detect
+// from the release name; "anime" routes the series into the anime library.
+func (s *Service) ResolveAdopt(ctx context.Context, name, kind string) (string, int64, error) {
 	p, _ := release.ParseRelease(name)
 	title, year := adoptTitle(p, name)
 	if title == "" {
 		return "", 0, fmt.Errorf("could not parse a title from %q", name)
 	}
 
-	if isSeriesRelease(p) {
+	asSeries := kind == "series" || kind == "anime" || (kind == "" && isSeriesRelease(p))
+	if asSeries {
+		seriesType := "standard"
+		if kind == "anime" {
+			seriesType = "anime"
+		}
 		term := title
 		cands, err := s.LookupSeries(ctx, term)
 		if err != nil {
@@ -29,7 +36,7 @@ func (s *Service) ResolveAdopt(ctx context.Context, name string) (string, int64,
 		if len(cands) == 0 {
 			return "", 0, fmt.Errorf("no TMDB series match for %q", term)
 		}
-		sr, err := s.AddSeries(ctx, cands[0].TMDBID, true, nil, "standard")
+		sr, err := s.AddSeries(ctx, cands[0].TMDBID, true, nil, seriesType)
 		if err != nil && !errors.Is(err, ErrAlreadyExists) {
 			return "", 0, fmt.Errorf("adding series: %w", err)
 		}

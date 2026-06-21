@@ -126,7 +126,7 @@ func (h *Handler) notificationAction(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusServiceUnavailable, "unavailable", "adopt not wired")
 			return
 		}
-		if err := h.deps.Adopter.AdoptUnknown(ctx, p.RemotePath, p.Name); err != nil {
+		if err := h.deps.Adopter.AdoptUnknown(ctx, p.RemotePath, p.Name, ""); err != nil {
 			h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 			return
 		}
@@ -192,14 +192,18 @@ func (h *Handler) deleteUnknownFromTorBox(ctx context.Context, name string) bool
 // guarded so it can only touch paths inside the configured mount root. On the
 // rclone-backed mount this removes the content from TorBox's WebDAV.
 func (h *Handler) removeMountFolder(remotePath string) {
+	if remotePath == "" {
+		return
+	}
 	root := h.deps.Settings.WebDAVMountRoot()
-	if remotePath == "" || root == "" {
+	if root == "" {
+		h.deps.Logger.Warn("delete: WebDAV mount root not configured — folder left on the mount", "path", remotePath)
 		return
 	}
 	clean := filepath.Clean(remotePath)
 	rel, err := filepath.Rel(filepath.Clean(root), clean)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
-		h.deps.Logger.Warn("unknown-content delete: path outside mount root, refusing", "path", remotePath)
+	if err != nil || rel == "." || rel == "" || strings.HasPrefix(rel, "..") {
+		h.deps.Logger.Warn("delete: path outside mount root, refusing", "path", remotePath)
 		return
 	}
 	if err := os.RemoveAll(clean); err != nil {

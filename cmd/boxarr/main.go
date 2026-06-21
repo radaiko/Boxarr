@@ -86,7 +86,7 @@ func run() error {
 	srv.SetHealReporter(workers)
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
 		Store: st, Settings: set, Catalog: cat, Health: workers, Reconciler: workers, Adopter: workers,
-		Logger: logger, Version: version,
+		Deleter: workers, Logger: logger, Version: version,
 	}).Router())
 	seerrDeps := seerr.Deps{Store: st, Settings: set, Catalog: cat, Logger: logger}
 	srv.SetSeerr(
