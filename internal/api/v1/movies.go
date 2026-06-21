@@ -14,25 +14,26 @@ import (
 
 // movieDTO is the camelCase wire shape for a movie (04-internal-api.md §4).
 type movieDTO struct {
-	ID                  int64  `json:"id"`
-	TMDBID              int64  `json:"tmdbId"`
-	IMDBID              string `json:"imdbId,omitempty"`
-	Title               string `json:"title"`
-	Year                int    `json:"year"`
-	Overview            string `json:"overview,omitempty"`
-	Monitored           bool   `json:"monitored"`
-	Status              string `json:"status"`
-	HasFile             bool   `json:"hasFile"`
-	MinimumAvailability string `json:"minimumAvailability"`
-	ReleaseDate         string `json:"releaseDate,omitempty"`
-	Runtime             int    `json:"runtime,omitempty"`
-	QualityProfileID    int64  `json:"qualityProfileId"`
-	RootFolderPath      string `json:"rootFolderPath"`
-	LibraryPath         string `json:"libraryPath,omitempty"`
-	PosterPath          string `json:"posterPath,omitempty"`
-	BackdropPath        string `json:"backdropPath,omitempty"`
-	TMDBStatus          string `json:"tmdbStatus,omitempty"`
-	AddedAt             string `json:"addedAt"`
+	ID                  int64     `json:"id"`
+	TMDBID              int64     `json:"tmdbId"`
+	IMDBID              string    `json:"imdbId,omitempty"`
+	Title               string    `json:"title"`
+	Year                int       `json:"year"`
+	Overview            string    `json:"overview,omitempty"`
+	Monitored           bool      `json:"monitored"`
+	Status              string    `json:"status"`
+	HasFile             bool      `json:"hasFile"`
+	MinimumAvailability string    `json:"minimumAvailability"`
+	ReleaseDate         string    `json:"releaseDate,omitempty"`
+	Runtime             int       `json:"runtime,omitempty"`
+	QualityProfileID    int64     `json:"qualityProfileId"`
+	RootFolderPath      string    `json:"rootFolderPath"`
+	LibraryPath         string    `json:"libraryPath,omitempty"`
+	PosterPath          string    `json:"posterPath,omitempty"`
+	BackdropPath        string    `json:"backdropPath,omitempty"`
+	TMDBStatus          string    `json:"tmdbStatus,omitempty"`
+	AddedAt             string    `json:"addedAt"`
+	File                *fileMeta `json:"file,omitempty"`
 }
 
 func toMovieDTO(m *media.Movie) movieDTO {
@@ -69,7 +70,9 @@ func (h *Handler) getMovie(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "not_found", "movie not found")
 		return
 	}
-	h.writeJSON(w, http.StatusOK, toMovieDTO(m))
+	dto := toMovieDTO(m)
+	dto.File = fileMetaFor(h.symlinkTargets(r.Context()), m.LibraryPath)
+	h.writeJSON(w, http.StatusOK, dto)
 }
 
 func (h *Handler) lookupMovies(w http.ResponseWriter, r *http.Request) {

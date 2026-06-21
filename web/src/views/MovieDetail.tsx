@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJSON, postJSON, del, posterURL, type Movie, type Release, type ListResponse } from '../api'
-import { Icon, Status, Loading, initials } from '../ui'
+import { Icon, Status, Loading, initials, FilePanel } from '../ui'
 import { ReleaseTable } from './ReleaseTable'
 
 export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) {
@@ -48,6 +48,7 @@ export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) 
             <Status value={movie.status} hasFile={movie.hasFile} />
           </div>
           {movie.overview && <p className="overview">{movie.overview}</p>}
+          {movie.file && <FilePanel file={movie.file} />}
           <div className="topbar-actions" style={{ justifyContent: 'flex-start' }}>
             <button className="btn btn-primary" onClick={() => void search()} disabled={busy}>
               <Icon name="search" /> {busy ? 'Searching…' : 'Search releases'}

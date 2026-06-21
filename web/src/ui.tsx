@@ -1,6 +1,7 @@
 // Shared UI primitives: inline-SVG icons, the lifecycle status pill (the app's
 // signature), empty/loading/error states, and small formatters.
 import type { ReactNode } from 'react'
+import type { FileMeta } from './api'
 
 const PATHS: Record<string, ReactNode> = {
   movies: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M8 4v5M16 4v5M8 20v-6M16 20v-6" /></>,
@@ -76,4 +77,34 @@ export function ago(iso: string): string {
 
 export function initials(title: string): string {
   return title.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+}
+
+// MetaChips renders the parsed file attributes as small chips (resolution,
+// dynamic range, source, codec, audio, languages, group).
+export function MetaChips({ file }: { file: FileMeta }) {
+  const chips: { label: string; cls?: string }[] = []
+  if (file.resolution) chips.push({ label: file.resolution })
+  if (file.dynamicRange) chips.push({ label: file.dynamicRange, cls: 'hdr' })
+  const src = file.source || file.quality // parser puts BluRay/WEB-DL in quality
+  if (src) chips.push({ label: src })
+  if (file.codec) chips.push({ label: file.codec })
+  if (file.audio) chips.push({ label: file.audio })
+  for (const l of file.languages ?? []) chips.push({ label: l, cls: 'lang' })
+  if (file.group) chips.push({ label: file.group, cls: 'grp' })
+  if (chips.length === 0) return null
+  return (
+    <span className="meta-chips">
+      {chips.map((c, i) => <span key={i} className={`meta-chip${c.cls ? ' ' + c.cls : ''}`}>{c.label}</span>)}
+    </span>
+  )
+}
+
+// FilePanel shows the downloaded file name + its metadata chips.
+export function FilePanel({ file }: { file: FileMeta }) {
+  return (
+    <div className="file-panel">
+      <div className="file-name"><Icon name="film" /><span title={file.path || file.name}>{file.name}</span></div>
+      <MetaChips file={file} />
+    </div>
+  )
 }

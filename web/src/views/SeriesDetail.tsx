@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJSON, postJSON, del, posterURL, type Series, type Episode, type Release, type ListResponse } from '../api'
-import { Icon, Status, Loading, initials } from '../ui'
+import { Icon, Status, Loading, initials, MetaChips } from '../ui'
 import { ReleaseTable } from './ReleaseTable'
 
 export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void }) {
@@ -85,7 +85,15 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
                 {s.episodes?.map((ep) => (
                   <tr key={ep.id}>
                     <td style={{ width: 56 }}><span className="ep-num">E{pad(ep.episodeNumber)}</span></td>
-                    <td>{ep.title || '—'}</td>
+                    <td>
+                      {ep.title || '—'}
+                      {ep.file && (
+                        <div className="ep-file">
+                          <span className="ep-file-name" title={ep.file.path || ep.file.name}>{ep.file.name}</span>
+                          <MetaChips file={ep.file} />
+                        </div>
+                      )}
+                    </td>
                     <td className="num" style={{ width: 110 }}>{ep.airDate || ''}</td>
                     <td style={{ width: 130 }}><Status value={ep.status} hasFile={ep.hasFile} /></td>
                     <td className="right" style={{ width: 110 }}>

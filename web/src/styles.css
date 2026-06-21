@@ -293,6 +293,21 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pick-row svg { width: 16px; height: 16px; flex: none; color: var(--accent); }
 .wd-group .table-wrap { border: 0; border-top: 1px solid var(--border-soft); border-radius: 0; }
 
+/* ── Downloaded-file metadata ──────────────────────────────────────────── */
+.file-panel { margin: 12px 0 14px; padding: 11px 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+.file-name { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12.5px; color: var(--text); margin-bottom: 9px; word-break: break-all; }
+.file-name svg { width: 15px; height: 15px; flex: none; color: var(--accent); }
+.meta-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.meta-chip {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .4px; padding: 2px 7px;
+  border-radius: 5px; background: var(--bg-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.meta-chip.hdr { color: var(--accent); border-color: #5a4015; background: var(--accent-soft); }
+.meta-chip.lang { color: var(--text); }
+.meta-chip.grp { color: var(--text-faint); }
+.ep-file { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+.ep-file-name { font-family: var(--mono); font-size: 11px; color: var(--text-faint); max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ── Detail header ─────────────────────────────────────────────────────── */
 .detail-head { display: flex; gap: 22px; align-items: flex-start; }
 .detail-poster { width: 180px; flex: none; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); aspect-ratio: 2/3; background: var(--surface-2); }

@@ -59,6 +59,21 @@ export interface SettingsResponse {
   configured: Record<string, boolean>
 }
 
+// FileMeta describes the downloaded file behind a library item, parsed from the
+// release name (resolution, source, codec, HDR/DV, audio, languages, group).
+export interface FileMeta {
+  name: string
+  path?: string
+  resolution?: string
+  source?: string
+  codec?: string
+  dynamicRange?: string
+  audio?: string
+  languages?: string[]
+  group?: string
+  quality?: string
+}
+
 export interface Movie {
   id: number
   tmdbId: number
@@ -70,6 +85,7 @@ export interface Movie {
   posterPath?: string
   overview?: string
   libraryPath?: string
+  file?: FileMeta
 }
 
 export interface MovieCandidate {
@@ -149,6 +165,7 @@ export interface Episode {
   status: string
   monitored: boolean
   hasFile: boolean
+  file?: FileMeta
 }
 
 export interface SeriesCandidate {

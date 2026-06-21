@@ -40,14 +40,15 @@ type seasonDTO struct {
 }
 
 type episodeDTO struct {
-	ID            int64  `json:"id"`
-	SeasonNumber  int    `json:"seasonNumber"`
-	EpisodeNumber int    `json:"episodeNumber"`
-	Title         string `json:"title"`
-	AirDate       string `json:"airDate,omitempty"`
-	Status        string `json:"status"`
-	Monitored     bool   `json:"monitored"`
-	HasFile       bool   `json:"hasFile"`
+	ID            int64     `json:"id"`
+	SeasonNumber  int       `json:"seasonNumber"`
+	EpisodeNumber int       `json:"episodeNumber"`
+	Title         string    `json:"title"`
+	AirDate       string    `json:"airDate,omitempty"`
+	Status        string    `json:"status"`
+	Monitored     bool      `json:"monitored"`
+	HasFile       bool      `json:"hasFile"`
+	File          *fileMeta `json:"file,omitempty"`
 }
 
 func seriesRollup(seasons []seasonDTO) string {
@@ -115,11 +116,13 @@ func (h *Handler) getSeries(w http.ResponseWriter, r *http.Request) {
 	}
 	seasons, _ := h.deps.Store.ListSeasons(ctx, id)
 	episodes, _ := h.deps.Store.ListEpisodes(ctx, id)
+	targets := h.symlinkTargets(ctx)
 	bySeason := map[int][]episodeDTO{}
 	for _, e := range episodes {
 		bySeason[e.SeasonNumber] = append(bySeason[e.SeasonNumber], episodeDTO{
 			ID: e.ID, SeasonNumber: e.SeasonNumber, EpisodeNumber: e.EpisodeNumber, Title: e.Title,
 			AirDate: e.AirDate, Status: string(e.Status), Monitored: e.Monitored, HasFile: e.HasFile,
+			File: fileMetaFor(targets, e.LibraryPath),
 		})
 	}
 	dto := seriesDTO{
