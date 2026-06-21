@@ -3,7 +3,7 @@ import { getJSON } from '../api'
 import { Icon, Loading, ErrorBanner, Empty, ago } from '../ui'
 
 interface Download { id: number; name: string; state: string; mediaType: string; progress: number; protocol: string; createdAt: string }
-interface BgTask { id: number; type: string; label: string; state: string; error?: string; createdAt: string; finishedAt?: string }
+interface BgTask { id: number; type: string; label: string; state: string; current?: number; total?: number; error?: string; createdAt: string; finishedAt?: string }
 
 const DL_PILL: Record<string, string> = {
   downloading: 'downloading', seeding: 'downloading', completed: 'available',
@@ -70,7 +70,12 @@ export function Activity() {
                     {t.label}
                     {t.error && <div className="test-bad" style={{ fontSize: 11, marginTop: 3 }}>{t.error}</div>}
                   </td>
-                  <td><span className={`status ${TASK_PILL[t.state] ?? 'idle'}`}>{t.state}</span></td>
+                  <td>
+                    <span className={`status ${TASK_PILL[t.state] ?? 'idle'}`}>{t.state}</span>
+                    {t.state === 'running' && (t.total ?? 0) > 0 && (
+                      <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>{t.current}/{t.total}</span>
+                    )}
+                  </td>
                   <td className="muted" style={{ fontSize: 12 }}>{ago(t.finishedAt || t.createdAt)}</td>
                 </tr>
               ))}

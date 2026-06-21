@@ -207,6 +207,8 @@ func (h *Handler) removeMountFolder(remotePath string) {
 		return
 	}
 	if err := os.RemoveAll(clean); err != nil {
-		h.deps.Logger.Warn("unknown-content delete: removing mount folder", "path", clean, "error", err)
+		// Best-effort: many rclone mounts reject unlink (EIO). Debug, not Warn —
+		// the TorBox API delete is the real removal path.
+		h.deps.Logger.Debug("delete: mount folder unlink failed (mount may be read-only)", "path", clean, "error", err)
 	}
 }

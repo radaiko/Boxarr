@@ -380,6 +380,33 @@ func (s *Store) ListImportedSymlinks(ctx context.Context) ([]*job.ImportedSymlin
 	return out, rows.Err()
 }
 
+// ListImportedSymlinksByJob returns just one job's symlinks (avoids scanning the
+// whole table per job during bulk rollback/delete).
+func (s *Store) ListImportedSymlinksByJob(ctx context.Context, jobID int64) ([]*job.ImportedSymlink, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+importedSymlinkColumns+` FROM imported_symlinks WHERE job_id=? ORDER BY id`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("listing imported symlinks by job: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []*job.ImportedSymlink
+	for rows.Next() {
+		var sym job.ImportedSymlink
+		var verified sql.NullTime
+		var broken int
+		if err := rows.Scan(&sym.ID, &sym.JobID, &sym.SymlinkPath, &sym.TargetPath,
+			&sym.DiscoveredAt, &verified, &broken); err != nil {
+			return nil, err
+		}
+		if verified.Valid {
+			sym.LastVerified = &verified.Time
+		}
+		sym.IsBroken = broken != 0
+		out = append(out, &sym)
+	}
+	return out, rows.Err()
+}
+
 // SetSymlinkVerified records a verification result for one tracked symlink.
 func (s *Store) SetSymlinkVerified(ctx context.Context, id int64, broken bool, at time.Time) error {
 	b := 0

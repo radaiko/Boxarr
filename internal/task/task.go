@@ -16,15 +16,20 @@ type Task struct {
 	Type       string     `json:"type"`  // "adopt" | "delete"
 	Label      string     `json:"label"` // human label (release/show name)
 	State      string     `json:"state"` // queued | running | done | error
+	Current    int        `json:"current,omitempty"`
+	Total      int        `json:"total,omitempty"`
 	Error      string     `json:"error,omitempty"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 
+// Progress reports how far a running task is (done out of total).
+type Progress func(done, total int)
+
 type queued struct {
 	t  *Task
-	fn func(context.Context) error
+	fn func(context.Context, Progress) error
 }
 
 // Manager owns the queue + recent-task history.
@@ -52,7 +57,8 @@ func (m *Manager) run() {
 			return
 		case j := <-m.queue:
 			m.set(j.t, "running", "")
-			err := j.fn(m.ctx)
+			progress := func(done, total int) { m.setProgress(j.t, done, total) }
+			err := j.fn(m.ctx, progress)
 			if err != nil {
 				m.set(j.t, "error", err.Error())
 			} else {
@@ -62,8 +68,15 @@ func (m *Manager) run() {
 	}
 }
 
-// Enqueue records a task and schedules fn to run on the background worker.
-func (m *Manager) Enqueue(typ, label string, fn func(context.Context) error) int64 {
+func (m *Manager) setProgress(t *Task, done, total int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t.Current, t.Total = done, total
+}
+
+// Enqueue records a task and schedules fn to run on the background worker. fn
+// receives a Progress callback to report done/total as it works.
+func (m *Manager) Enqueue(typ, label string, fn func(context.Context, Progress) error) int64 {
 	m.mu.Lock()
 	m.seq++
 	t := &Task{ID: m.seq, Type: typ, Label: label, State: "queued", CreatedAt: m.now()}

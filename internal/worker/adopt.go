@@ -96,12 +96,12 @@ func (w *Workers) linkExistingTorBoxDownload(ctx context.Context, j *job.Job, na
 // recorded library symlink from disk, reverts the catalog rows the import
 // touched, and then drops the job row.
 func (w *Workers) rollbackImport(ctx context.Context, jobID int64) {
-	if syms, err := w.store.ListImportedSymlinks(ctx); err == nil {
+	// Query only this job's symlinks (not the whole table) so bulk delete is O(N)
+	// not O(N²) on the single SQLite connection.
+	if syms, err := w.store.ListImportedSymlinksByJob(ctx, jobID); err == nil {
 		for _, s := range syms {
-			if s.JobID == jobID {
-				if rerr := removeLibrarySymlink(s.SymlinkPath); rerr != nil {
-					w.logger.Warn("rollback: removing symlink", "path", s.SymlinkPath, "error", rerr)
-				}
+			if rerr := removeLibrarySymlink(s.SymlinkPath); rerr != nil {
+				w.logger.Warn("rollback: removing symlink", "path", s.SymlinkPath, "error", rerr)
 			}
 		}
 	}

@@ -140,14 +140,14 @@ func (h *Handler) deleteWebDAV(w http.ResponseWriter, r *http.Request) {
 	// Background it so a multi-item delete survives the user navigating away.
 	if h.deps.Tasks != nil {
 		label := plural(len(ids), "item", "items")
-		id := h.deps.Tasks.Enqueue("delete", label, func(ctx context.Context) error {
-			h.runDelete(ctx, ids)
+		id := h.deps.Tasks.Enqueue("delete", label, func(ctx context.Context, prog task.Progress) error {
+			h.runDelete(ctx, ids, prog)
 			return nil
 		})
 		h.writeJSON(w, http.StatusAccepted, map[string]any{"taskId": id, "queued": true})
 		return
 	}
-	deleted, failed := h.runDelete(r.Context(), ids)
+	deleted, failed := h.runDelete(r.Context(), ids, nil)
 	h.writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "failed": failed})
 }
 
@@ -161,7 +161,10 @@ func plural(n int, one, many string) string {
 // runDelete removes the given mount items: matching TorBox download (mylists
 // fetched once), the mount folder, and the row — tearing down tracked imports
 // first so no library symlink dangles.
-func (h *Handler) runDelete(ctx context.Context, ids []int64) (deleted, failed int) {
+func (h *Handler) runDelete(ctx context.Context, ids []int64, prog task.Progress) (deleted, failed int) {
+	if prog != nil {
+		prog(0, len(ids))
+	}
 	all, err := h.deps.Store.ListWebDAVItems(ctx)
 	if err != nil {
 		h.deps.Logger.Warn("delete: listing webdav items", "error", err)
@@ -184,9 +187,12 @@ func (h *Handler) runDelete(ctx context.Context, ids []int64) (deleted, failed i
 			uIdx[strings.ToLower(d.Name)] = int64(d.ID)
 		}
 	}
-	for _, id := range ids {
+	for i, id := range ids {
 		it := byID[id]
 		if it == nil {
+			if prog != nil {
+				prog(i+1, len(ids))
+			}
 			continue
 		}
 		// Tracked item: tear down the import (library symlinks + catalog + job)
@@ -195,22 +201,33 @@ func (h *Handler) runDelete(ctx context.Context, ids []int64) (deleted, failed i
 			h.deps.Deleter.RemoveImport(ctx, it.JobID)
 		}
 		ln := strings.ToLower(it.Name)
+		matched := false
 		if did, ok := tIdx[ln]; ok {
+			matched = true
 			if e := tb.ControlTorrent(ctx, did, "delete"); e != nil {
 				h.deps.Logger.Warn("webdav delete (torrent)", "name", it.Name, "error", e)
 			}
 		} else if uid, ok := uIdx[ln]; ok {
+			matched = true
 			if e := tb.ControlUsenet(ctx, uid, "delete"); e != nil {
 				h.deps.Logger.Warn("webdav delete (usenet)", "name", it.Name, "error", e)
 			}
 		}
-		h.removeMountFolder(it.RemotePath)
+		// Only fall back to a filesystem unlink when the item wasn't in a mylist
+		// (TorBox's API delete already removes matched downloads, and many rclone
+		// mounts reject unlink with EIO — so don't churn/spam on the common path).
+		if !matched {
+			h.removeMountFolder(it.RemotePath)
+		}
 		if e := h.deps.Store.DeleteWebDAVItemByPath(ctx, it.RemotePath); e != nil {
 			h.deps.Logger.Warn("webdav delete: dropping row", "name", it.Name, "error", e)
 			failed++
-			continue
+		} else {
+			deleted++
 		}
-		deleted++
+		if prog != nil {
+			prog(i+1, len(ids))
+		}
 	}
 	return deleted, failed
 }
@@ -272,7 +289,7 @@ func (h *Handler) adoptWebDAV(w http.ResponseWriter, r *http.Request) {
 	// Run adopts in the background so they survive the user navigating away (the
 	// import can take a while); fall back to inline when no task runner is wired.
 	if h.deps.Tasks != nil {
-		id := h.deps.Tasks.Enqueue("adopt", name, adopt)
+		id := h.deps.Tasks.Enqueue("adopt", name, func(ctx context.Context, _ task.Progress) error { return adopt(ctx) })
 		h.writeJSON(w, http.StatusAccepted, map[string]any{"taskId": id, "queued": true})
 		return
 	}

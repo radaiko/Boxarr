@@ -263,6 +263,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .wd-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; margin: 0; }
 .wd-selectall { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .row-sel { background: var(--accent-soft); }
+.row-deleting { opacity: .55; }
+.row-deleting .rel-title { text-decoration: line-through; }
 .bulk-bar {
   display: flex; align-items: center; gap: 14px; margin-bottom: 16px;
   padding: 10px 14px; border: 1px solid var(--accent); border-radius: var(--radius);
