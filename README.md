@@ -214,6 +214,37 @@ Plex libraries: Movies → `/mnt/library/movies`, Shows → `/mnt/library/tv`,
 Anime → `/mnt/library/anime`. Or just **Sign in with Plex** in Settings and map
 them from the dropdown.
 
+### Troubleshooting: Plex shows no files after restarting rclone
+
+Restarting the rclone container tears down and recreates the FUSE mount at
+`/mnt/torbox`. If Plex's container holds a **stale** mount, every symlink target
+becomes unresolvable and Plex shows an empty/incomplete library — even though the
+symlinks still exist (`ls` lists them, but `ls -lL` fails to resolve the target).
+
+**Proper fix — mount propagation.** The remount must propagate from rclone →
+host → Plex. Set it up once:
+
+1. Make the host path a shared mount **before** starting the containers (and on
+   every boot — e.g. via `/etc/rc.local` or a systemd unit):
+   ```bash
+   mount --bind /mnt/torbox /mnt/torbox
+   mount --make-rshared /mnt/torbox
+   ```
+2. rclone publishes its mount with `rshared` (see the rclone service above:
+   `bind: { propagation: rshared }`).
+3. Plex consumes it with `rslave` (see the Plex `volumes` above:
+   `bind: { propagation: rslave }`).
+
+With this chain, when rclone restarts and remounts, the new mount **propagates
+into the Plex container automatically** — no stale mount. Without it, Plex keeps
+the dead mount until *Plex itself* is restarted.
+
+**After a mount blip, Plex still needs to re-read the files.** Plex does not
+auto-rescan when a mount changes. Trigger **Scan Library Files** on the affected
+library (Boxarr scans automatically only after its own imports, not after a mount
+event). The simplest operational rule: avoid unnecessary rclone restarts, and if
+you must restart it, run a Plex library scan afterward.
+
 ## Configuration
 
 Everything is settable in the UI (and applies live); the env vars above are an
