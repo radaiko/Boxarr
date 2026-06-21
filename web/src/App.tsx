@@ -1,20 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getJSON, loadImageBase } from './api'
 import { Icon } from './ui'
 import { Settings } from './views/Settings'
 import { Movies } from './views/Movies'
 import { Series } from './views/Series'
 import { Notifications } from './views/Notifications'
-import { Storage } from './views/Storage'
-import { WebDAV } from './views/WebDAV'
+import { TorBox } from './views/TorBox'
 import { Activity } from './views/Activity'
 
 const NAV = [
   { id: 'Movies', icon: 'movies', group: 'Library' },
   { id: 'Series', icon: 'series', group: 'Library' },
   { id: 'Anime', icon: 'anime', group: 'Library' },
-  { id: 'WebDAV', icon: 'webdav', group: 'System' },
-  { id: 'Storage', icon: 'storage', group: 'System' },
+  { id: 'TorBox', icon: 'storage', group: 'System' },
   { id: 'Activity', icon: 'download', group: 'Activity' },
   { id: 'Notifications', icon: 'notifications', group: 'Activity' },
   { id: 'Settings', icon: 'settings', group: 'Config' },
@@ -29,6 +27,16 @@ interface Status {
 export function App() {
   const [view, setView] = useState<View>('Movies')
   const [status, setStatus] = useState<Status | null>(null)
+  // Cross-view jump: when a tracked WebDAV item is clicked, open its catalog page.
+  const [openTarget, setOpenTarget] = useState<{ view: View; id: number; seq: number } | null>(null)
+  const seq = useRef(0)
+  function openCatalog(kind: string, id: number) {
+    const v: View = kind === 'movie' ? 'Movies' : kind === 'anime' ? 'Anime' : 'Series'
+    seq.current += 1
+    setOpenTarget({ view: v, id, seq: seq.current })
+    setView(v)
+  }
+  const openFor = (v: View) => (openTarget?.view === v ? openTarget : undefined)
 
   useEffect(() => {
     void loadImageBase()
@@ -86,11 +94,10 @@ export function App() {
           </div>
         </header>
         <main className="content">
-          {view === 'Movies' && <Movies />}
-          {view === 'Series' && <Series />}
-          {view === 'Anime' && <Series anime />}
-          {view === 'WebDAV' && <WebDAV />}
-          {view === 'Storage' && <Storage />}
+          {view === 'Movies' && <Movies openId={openFor('Movies')?.id} openSeq={openFor('Movies')?.seq} />}
+          {view === 'Series' && <Series openId={openFor('Series')?.id} openSeq={openFor('Series')?.seq} />}
+          {view === 'Anime' && <Series anime openId={openFor('Anime')?.id} openSeq={openFor('Anime')?.seq} />}
+          {view === 'TorBox' && <TorBox onOpenCatalog={openCatalog} />}
           {view === 'Activity' && <Activity />}
           {view === 'Notifications' && <Notifications />}
           {view === 'Settings' && <Settings />}

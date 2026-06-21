@@ -214,6 +214,8 @@ a { color: var(--accent-2); text-decoration: none; }
 .status.wanted { color: var(--accent); border-color: #5a4015; background: #241a08; }
 .status.missing { color: var(--text-faint); }
 .status.idle { color: var(--text-faint); border-color: var(--border); background: var(--surface-2); }
+button.status.link { cursor: pointer; font: inherit; }
+button.status.link:hover { filter: brightness(1.25); text-decoration: underline; }
 .status.broken, .status.expired_broken, .status.failed { color: var(--danger); border-color: #5a2330; background: #251119; }
 
 .chip {

@@ -3,7 +3,7 @@ import { getJSON, postJSON, posterURL, type Movie, type MovieCandidate, type Lis
 import { Icon, Status, Empty, Loading, ErrorBanner, initials } from '../ui'
 import { MovieDetail } from './MovieDetail'
 
-export function Movies() {
+export function Movies({ openId, openSeq }: { openId?: number; openSeq?: number } = {}) {
   const [movies, setMovies] = useState<Movie[] | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
@@ -15,6 +15,8 @@ export function Movies() {
       .catch((e: unknown) => setErr(String(e)))
   }
   useEffect(reload, [])
+  // Open a specific movie when jumped to (e.g. a TorBox tracked link).
+  useEffect(() => { if (openId != null) setSelected(openId) }, [openSeq]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (err) return <ErrorBanner message={err} />
   if (selected !== null) return <MovieDetail id={selected} onBack={() => { setSelected(null); reload() }} />

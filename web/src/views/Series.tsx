@@ -3,7 +3,7 @@ import { getJSON, postJSON, posterURL, type Series as SeriesT, type SeriesCandid
 import { Icon, Status, Empty, Loading, ErrorBanner, initials } from '../ui'
 import { SeriesDetail } from './SeriesDetail'
 
-export function Series({ anime = false }: { anime?: boolean }) {
+export function Series({ anime = false, openId, openSeq }: { anime?: boolean; openId?: number; openSeq?: number }) {
   const [series, setSeries] = useState<SeriesT[] | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
@@ -18,6 +18,8 @@ export function Series({ anime = false }: { anime?: boolean }) {
       .catch((e: unknown) => setErr(String(e)))
   }
   useEffect(reload, [anime])
+  // Open a specific series when jumped to (e.g. a TorBox tracked link).
+  useEffect(() => { if (openId != null) setSelected(openId) }, [openSeq]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (err) return <ErrorBanner message={err} />
   if (selected !== null) return <SeriesDetail id={selected} onBack={() => { setSelected(null); reload() }} />

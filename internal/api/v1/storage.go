@@ -74,6 +74,7 @@ type webdavItemDTO struct {
 	Season     int    `json:"season,omitempty"`
 	Episode    int    `json:"episode,omitempty"`
 	PosterPath string `json:"posterPath,omitempty"` // catalog poster for tracked items
+	CatalogID  int64  `json:"catalogId,omitempty"`  // movie/series id for tracked items (jump-to)
 }
 
 func toWebDAVDTO(it *webdav.WebDAVItem) webdavItemDTO {
@@ -335,6 +336,7 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 		if it.Known {
 			if c, ok := idx[strings.ToLower(dto.Title)]; ok {
 				dto.PosterPath = c.poster
+				dto.CatalogID = c.id
 				if c.kind != "" {
 					dto.Kind = c.kind
 				}
@@ -366,15 +368,18 @@ func (h *Handler) activity(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, map[string]any{"downloads": downloads, "tasks": tasks})
 }
 
-type catalogEntry struct{ poster, kind string }
+type catalogEntry struct {
+	poster, kind string
+	id           int64
+}
 
-// catalogByTitle maps lower-cased catalog titles → {poster, kind}, so tracked
-// mount items can show their real cover + category (movie/series/anime).
+// catalogByTitle maps lower-cased catalog titles → {poster, kind, id}, so tracked
+// mount items can show their real cover + category and link to the catalog page.
 func (h *Handler) catalogByTitle(ctx context.Context) map[string]catalogEntry {
 	m := map[string]catalogEntry{}
 	if ms, err := h.deps.Store.ListMovies(ctx); err == nil {
 		for _, mv := range ms {
-			m[strings.ToLower(mv.Title)] = catalogEntry{poster: mv.PosterPath, kind: "movie"}
+			m[strings.ToLower(mv.Title)] = catalogEntry{poster: mv.PosterPath, kind: "movie", id: mv.ID}
 		}
 	}
 	if ss, err := h.deps.Store.ListSeries(ctx); err == nil {
@@ -383,7 +388,7 @@ func (h *Handler) catalogByTitle(ctx context.Context) map[string]catalogEntry {
 			if s.SeriesType == "anime" {
 				kind = "anime"
 			}
-			m[strings.ToLower(s.Title)] = catalogEntry{poster: s.PosterPath, kind: kind}
+			m[strings.ToLower(s.Title)] = catalogEntry{poster: s.PosterPath, kind: kind, id: s.ID}
 		}
 	}
 	return m

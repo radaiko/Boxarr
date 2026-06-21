@@ -14,7 +14,11 @@ interface Item {
   season?: number
   episode?: number
   posterPath?: string
+  catalogId?: number
 }
+
+// Jump to the catalog page for a tracked item.
+type OpenCatalog = (kind: string, id: number) => void
 
 // Cover shows the catalog poster for tracked items, or a placeholder for unknown.
 function Cover({ poster }: { poster?: string }) {
@@ -44,7 +48,7 @@ const SECTIONS: { kind: string; label: string; icon: string }[] = [
   { kind: 'unknown', label: 'Unknown', icon: 'webdav' },
 ]
 
-export function WebDAV() {
+export function WebDAV({ onOpenCatalog }: { onOpenCatalog?: OpenCatalog }) {
   const [items, setItems] = useState<Item[] | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -143,7 +147,7 @@ export function WebDAV() {
           const inKind = items.filter((it) => it.kind === s.kind)
           if (inKind.length === 0) return null
           return <Section key={s.kind} label={s.label} icon={s.icon} kind={s.kind} items={inKind}
-            grouped={s.kind === 'series' || s.kind === 'anime'} reload={reload} sel={sel} del={del} />
+            grouped={s.kind === 'series' || s.kind === 'anime'} reload={reload} sel={sel} del={del} onOpenCatalog={onOpenCatalog} />
         })
       )}
     </section>
@@ -177,9 +181,9 @@ function BulkBar({ count, tracked, size, onDelete, onClear }: {
   )
 }
 
-function Section({ label, icon, items, grouped, kind, reload, sel, del }: {
+function Section({ label, icon, items, grouped, kind, reload, sel, del, onOpenCatalog }: {
   label: string; icon: string; items: Item[]; grouped: boolean; kind: string
-  reload: () => Promise<void>; sel: Sel; del: Del
+  reload: () => Promise<void>; sel: Sel; del: Del; onOpenCatalog?: OpenCatalog
 }) {
   const size = items.reduce((s, it) => s + it.size, 0)
   const adoptKind = kind === 'unknown' ? '' : kind
@@ -194,10 +198,21 @@ function Section({ label, icon, items, grouped, kind, reload, sel, del }: {
         </span>
       </div>
       {grouped
-        ? groups.map((g) => <TitleGroup key={g.title} group={g} kind={adoptKind} reload={reload} sel={sel} del={del} />)
-        : <FlatTable items={items} adoptKind={adoptKind} reload={reload} sel={sel} del={del} />}
+        ? groups.map((g) => <TitleGroup key={g.title} group={g} kind={adoptKind} reload={reload} sel={sel} del={del} onOpenCatalog={onOpenCatalog} />)
+        : <FlatTable items={items} adoptKind={adoptKind} reload={reload} sel={sel} del={del} onOpenCatalog={onOpenCatalog} />}
     </div>
   )
+}
+
+// TrackedPill is the "tracked" status; clickable to jump to the catalog page.
+function TrackedPill({ item, onOpenCatalog }: { item: Item; onOpenCatalog?: OpenCatalog }) {
+  if (onOpenCatalog && item.catalogId) {
+    return (
+      <button className="status available link" title="Open in library"
+        onClick={(e) => { stop(e); onOpenCatalog(item.kind, item.catalogId!) }}>tracked</button>
+    )
+  }
+  return <span className="status available">tracked</span>
 }
 
 interface Group { title: string; items: Item[]; size: number }
@@ -217,8 +232,8 @@ function byEp(a: Item, b: Item): number {
   return (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0) || a.name.localeCompare(b.name)
 }
 
-function TitleGroup({ group, kind, reload, sel, del }: {
-  group: Group; kind: string; reload: () => Promise<void>; sel: Sel; del: Del
+function TitleGroup({ group, kind, reload, sel, del, onOpenCatalog }: {
+  group: Group; kind: string; reload: () => Promise<void>; sel: Sel; del: Del; onOpenCatalog?: OpenCatalog
 }) {
   const unknown = group.items.filter((i) => !i.known)
   const trackedCount = group.items.length - unknown.length
@@ -228,6 +243,8 @@ function TitleGroup({ group, kind, reload, sel, del }: {
   const status = allDeleting ? 'deleting'
     : trackedCount === group.items.length ? 'tracked'
       : trackedCount === 0 ? 'unknown' : 'partial'
+  const tracked = group.items.find((i) => i.catalogId)
+  const clickable = !allDeleting && onOpenCatalog && tracked?.catalogId
   return (
     <details className="wd-group">
       <summary>
@@ -236,9 +253,14 @@ function TitleGroup({ group, kind, reload, sel, del }: {
         <Cover poster={group.items.find((i) => i.posterPath)?.posterPath} />
         <span className="wd-group-title">{group.title}</span>
         <span className="wd-group-right" onClick={stop}>
-          <span className={`status ${statusClass(status)}`}>
-            {status === 'partial' ? `${trackedCount}/${group.items.length} tracked` : status}
-          </span>
+          {clickable ? (
+            <button className={`status ${statusClass(status)} link`} title="Open in library"
+              onClick={(e) => { stop(e); onOpenCatalog!(tracked!.kind, tracked!.catalogId!) }}>{status}</button>
+          ) : (
+            <span className={`status ${statusClass(status)}`}>
+              {status === 'partial' ? `${trackedCount}/${group.items.length} tracked` : status}
+            </span>
+          )}
           <span className="wd-group-meta">{group.items.length} files · {gb(group.size)}</span>
           {!allDeleting && unknown.length > 0 && <AdoptBtn items={unknown} kind={kind} reload={reload} label="Add show to library" />}
           {!allDeleting && <DeleteBtn ids={ids} onDelete={del.run} tracked={trackedCount} title="Delete show from TorBox" />}
@@ -281,8 +303,8 @@ function epLabel(it: Item): string {
 }
 function pad(n: number): string { return String(n).padStart(2, '0') }
 
-function FlatTable({ items, adoptKind, reload, sel, del }: {
-  items: Item[]; adoptKind: string; reload: () => Promise<void>; sel: Sel; del: Del
+function FlatTable({ items, adoptKind, reload, sel, del, onOpenCatalog }: {
+  items: Item[]; adoptKind: string; reload: () => Promise<void>; sel: Sel; del: Del; onOpenCatalog?: OpenCatalog
 }) {
   return (
     <div className="table-wrap">
@@ -299,7 +321,7 @@ function FlatTable({ items, adoptKind, reload, sel, del }: {
                 <td className="num">{gb(it.size)}</td>
                 <td>{pending
                   ? <span className="status searching">deleting</span>
-                  : it.known ? <span className="status available">tracked</span> : <span className="status idle">unknown</span>}</td>
+                  : it.known ? <TrackedPill item={it} onOpenCatalog={onOpenCatalog} /> : <span className="status idle">unknown</span>}</td>
                 <td className="act-cell" style={{ width: 130 }}>
                   {!pending && !it.known && <AdoptBtn items={[it]} kind={adoptKind} reload={reload} />}
                   {!pending && <DeleteBtn ids={[it.id]} onDelete={del.run} tracked={it.known ? 1 : 0} />}
