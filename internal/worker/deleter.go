@@ -79,11 +79,10 @@ func (w *Workers) deleteJob(ctx context.Context, j *job.Job) {
 	}
 	delete(w.deleteAttempts, j.ID)
 	// Remove direct-to-library symlinks recorded for this job (00 §5.1 importer).
-	if syms, err := w.store.ListImportedSymlinks(ctx); err == nil {
+	// Query just this job's symlinks so deleting a whole series (many jobs) is
+	// O(N) not O(N²) on the single SQLite connection.
+	if syms, err := w.store.ListImportedSymlinksByJob(ctx, j.ID); err == nil {
 		for _, s := range syms {
-			if s.JobID != j.ID {
-				continue
-			}
 			if rerr := removeLibrarySymlink(s.SymlinkPath); rerr != nil {
 				log.Warn("removing library symlink", "path", s.SymlinkPath, "error", rerr)
 			}
