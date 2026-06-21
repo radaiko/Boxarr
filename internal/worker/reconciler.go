@@ -12,6 +12,9 @@ import (
 	"github.com/radaiko/boxarr/internal/webdav"
 )
 
+// Reconcile runs one reconcile sweep on demand (POST /api/v1/webdav/refresh).
+func (w *Workers) Reconcile(ctx context.Context) error { return w.reconcileOnce(ctx) }
+
 // reconcileOnce sweeps the WebDAV mount against known jobs: it upserts a
 // webdav_item per release folder, categorizes it, marks vanished items broken,
 // and raises an unknown_content notification for items Boxarr did not submit

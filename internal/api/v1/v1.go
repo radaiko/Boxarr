@@ -4,6 +4,7 @@
 package v1
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"log/slog"
@@ -23,14 +24,20 @@ type HealReporter interface {
 	HealRunInfo() (last, next time.Time)
 }
 
+// Reconciler triggers an out-of-band WebDAV/mylist reconcile (satisfied by worker.Workers).
+type Reconciler interface {
+	Reconcile(ctx context.Context) error
+}
+
 // Deps are the dependencies the /api/v1 handler needs.
 type Deps struct {
-	Store    *store.Store
-	Settings *settings.Store
-	Catalog  *catalog.Service
-	Health   HealReporter
-	Logger   *slog.Logger
-	Version  string
+	Store      *store.Store
+	Settings   *settings.Store
+	Catalog    *catalog.Service
+	Health     HealReporter
+	Reconciler Reconciler
+	Logger     *slog.Logger
+	Version    string
 }
 
 // Handler serves the /api/v1 surface.
@@ -49,6 +56,7 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/account", h.account)
 	r.Get("/settings", h.getSettings)
 	r.Put("/settings", h.putSettings)
+	r.Post("/settings/test/{service}", h.testConnection)
 	r.Get("/movies", h.listMovies)
 	r.Get("/movies/lookup", h.lookupMovies)
 	r.Get("/movies/{id}", h.getMovie)
@@ -60,11 +68,14 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/search", h.freeSearch)
 	r.Get("/storage", h.storage)
 	r.Get("/webdav", h.listWebDAV)
+	r.Post("/webdav/refresh", h.refreshWebDAV)
 	r.Get("/series", h.listSeries)
 	r.Get("/series/lookup", h.lookupSeries)
 	r.Get("/series/{id}", h.getSeries)
 	r.Post("/series", h.addSeries)
 	r.Put("/series/{id}/monitored", h.setSeriesMonitored)
+	r.Put("/series/{id}/seasons/{season}/monitored", h.setSeasonMonitored)
+	r.Put("/series/{id}/episodes/{episodeId}/monitored", h.setEpisodeMonitored)
 	r.Delete("/series/{id}", h.deleteSeries)
 	r.Get("/series/{id}/seasons/{season}/search", h.searchSeason)
 	r.Get("/series/{id}/episodes/{episodeId}/search", h.searchEpisode)
@@ -73,6 +84,7 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/notifications/unread-count", h.unreadCount)
 	r.Put("/notifications/{id}/read", h.markNotificationRead)
 	r.Put("/notifications/read-all", h.markAllNotificationsRead)
+	r.Post("/notifications/{id}/action", h.notificationAction)
 	return r
 }
 

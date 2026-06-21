@@ -42,6 +42,17 @@ func (s *Store) EnqueueNotification(ctx context.Context, n *notify.Notification)
 	return res.LastInsertId()
 }
 
+// GetNotification returns one notification by id.
+func (s *Store) GetNotification(ctx context.Context, id int64) (*notify.Notification, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+notificationColumns+` FROM notification WHERE id = ?`, id)
+	n, err := scanNotification(row)
+	if err != nil {
+		return nil, fmt.Errorf("getting notification %d: %w", id, err)
+	}
+	return n, nil
+}
+
 // ListNotifications returns notifications newest-first, optionally unread-only.
 // A limit <= 0 falls back to 50.
 func (s *Store) ListNotifications(ctx context.Context, unreadOnly bool, limit int) ([]*notify.Notification, error) {

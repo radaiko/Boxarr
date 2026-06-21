@@ -27,6 +27,12 @@ func (s *Store) PlexTVSection() string    { return s.str(KeyPlexTVSection, s.see
 func (s *Store) SeerrAPIKeys() []string   { return s.csv(KeySeerrAPIKeys, s.seed.SeerrAPIKeys) }
 func (s *Store) APIKey() string           { return s.str(KeyAPIKey, s.seed.APIKey) }
 
+// Base-URL overrides (empty = the client's production default). Used by the
+// connection-test endpoints and mirror/self-host setups.
+func (s *Store) TorBoxBaseURL() string { return s.str(KeyTorBoxBaseURL, "") }
+func (s *Store) TMDBBaseURL() string   { return s.str(KeyTMDBBaseURL, "") }
+func (s *Store) TVDBBaseURL() string   { return s.str(KeyTVDBBaseURL, "") }
+
 // ── TorBox WebDAV force-refresh ──
 func (s *Store) TorBoxWebDAVUser() string { return s.str(KeyWebDAVUser, s.seed.TorBoxWebDAVUser) }
 func (s *Store) TorBoxWebDAVPass() string { return s.str(KeyWebDAVPass, s.seed.TorBoxWebDAVPass) }

@@ -20,9 +20,11 @@ func (h *Handler) storage(w http.ResponseWriter, r *http.Request) {
 	active, _ := h.deps.Store.CountJobsByState(ctx,
 		job.StateSubmitting, job.StateQueued, job.StateDownloading, job.StateSeeding)
 
+	byCat, _ := h.deps.Store.WebDAVUsageByCategory(ctx)
 	resp := map[string]any{
-		"usedBytes": used,
-		"downloads": map[string]any{"active": active},
+		"usedBytes":  used,
+		"byCategory": byCat,
+		"downloads":  map[string]any{"active": active},
 	}
 	if h.deps.Settings.TorBox() != nil {
 		if u, err := h.deps.Settings.TorBox().UserMe(ctx); err == nil {
@@ -66,6 +68,20 @@ func toWebDAVDTO(it *webdav.WebDAVItem) webdavItemDTO {
 		Category: it.Category, Known: it.Known, JobID: it.JobID, IsBroken: it.IsBroken,
 		FirstSeen: rfc3339(it.FirstSeen), LastSeen: rfc3339(it.LastSeen),
 	}
+}
+
+// refreshWebDAV triggers an out-of-band reconcile sweep (FR-WD-3) so the mount
+// view + unknown-content detection update without waiting for the 15-min tick.
+func (h *Handler) refreshWebDAV(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Reconciler == nil {
+		h.writeError(w, http.StatusServiceUnavailable, "unavailable", "reconciler not wired")
+		return
+	}
+	if err := h.deps.Reconciler.Reconcile(r.Context()); err != nil {
+		h.writeError(w, http.StatusBadGateway, "upstream_unavailable", err.Error())
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // listWebDAV lists mount items from the cached table (FR-WD-1/2; never scans the

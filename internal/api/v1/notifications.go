@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -80,4 +81,85 @@ func (h *Handler) markAllNotificationsRead(w http.ResponseWriter, r *http.Reques
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
+// notificationAction resolves an unknown_content notification (FR-NC-2):
+//   - ignore / adopt: mark the mount item known so it stops being flagged
+//   - delete: delete the download from TorBox + drop the mount-item row
+func (h *Handler) notificationAction(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "invalid id")
+		return
+	}
+	var body struct {
+		Action string `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "invalid body")
+		return
+	}
+	ctx := r.Context()
+	n, err := h.deps.Store.GetNotification(ctx, id)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "not_found", "notification not found")
+		return
+	}
+	if n.Type != "unknown_content" {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "action only valid for unknown_content")
+		return
+	}
+	var p struct {
+		RemotePath string `json:"remotePath"`
+		Name       string `json:"name"`
+	}
+	_ = json.Unmarshal([]byte(n.Payload), &p)
+
+	switch body.Action {
+	case "ignore", "adopt":
+		// Keep the content; stop flagging it. (Full library adoption — TMDB match
+		// + catalog link — is not yet implemented; this marks it accounted-for.)
+		if err := h.deps.Store.SetWebDAVItemKnown(ctx, p.RemotePath, true); err != nil {
+			h.writeError(w, http.StatusInternalServerError, "internal", "updating item")
+			return
+		}
+	case "delete":
+		h.deleteUnknownFromTorBox(ctx, p.Name)
+		if err := h.deps.Store.DeleteWebDAVItemByPath(ctx, p.RemotePath); err != nil {
+			h.writeError(w, http.StatusInternalServerError, "internal", "removing item")
+			return
+		}
+	default:
+		h.writeError(w, http.StatusBadRequest, "bad_request", "action must be adopt|ignore|delete")
+		return
+	}
+	_ = h.deps.Store.MarkNotificationRead(ctx, id)
+	h.writeJSON(w, http.StatusOK, map[string]any{"id": id, "action": body.Action, "ok": true})
+}
+
+// deleteUnknownFromTorBox best-effort deletes a download (matched by folder name)
+// from TorBox, checking torrents then usenet.
+func (h *Handler) deleteUnknownFromTorBox(ctx context.Context, name string) {
+	tb := h.deps.Settings.TorBox()
+	if torrents, err := tb.ListTorrents(ctx); err == nil {
+		for _, d := range torrents {
+			if d.Name == name {
+				if derr := tb.ControlTorrent(ctx, int64(d.ID), "delete"); derr != nil {
+					h.deps.Logger.Warn("unknown-content delete (torrent)", "name", name, "error", derr)
+				}
+				return
+			}
+		}
+	}
+	if usenet, err := tb.ListUsenet(ctx); err == nil {
+		for _, d := range usenet {
+			if d.Name == name {
+				if derr := tb.ControlUsenet(ctx, int64(d.ID), "delete"); derr != nil {
+					h.deps.Logger.Warn("unknown-content delete (usenet)", "name", name, "error", derr)
+				}
+				return
+			}
+		}
+	}
+	h.deps.Logger.Warn("unknown-content delete: no matching TorBox download", "name", name)
 }

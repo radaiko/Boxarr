@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getJSON, putJSON } from '../api'
+import { getJSON, putJSON, postJSON } from '../api'
 
 interface SettingsResponse {
   settings: Record<string, string> // DB overlay (secrets masked as ********)
@@ -71,9 +71,20 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
 
 const testable = ['torbox', 'prowlarr', 'tmdb', 'tvdb', 'plex'] as const
 
+// Maps a settings group title to a test service + the request body built from
+// the current values (posted to /settings/test/{svc} for test-before-save).
+const groupService: Record<string, { svc: string; body: (v: (k: string) => string) => Record<string, string> }> = {
+  TorBox: { svc: 'torbox', body: (v) => ({ token: v('torbox.token') }) },
+  Prowlarr: { svc: 'prowlarr', body: (v) => ({ url: v('prowlarr.url'), apiKey: v('prowlarr.api_key') }) },
+  TMDB: { svc: 'tmdb', body: (v) => ({ token: v('tmdb.token') }) },
+  TVDB: { svc: 'tvdb', body: (v) => ({ apiKey: v('tvdb.api_key'), pin: v('tvdb.pin') }) },
+  Plex: { svc: 'plex', body: (v) => ({ url: v('plex.url'), token: v('plex.token') }) },
+}
+
 export function Settings() {
   const [data, setData] = useState<SettingsResponse | null>(null)
   const [edits, setEdits] = useState<Record<string, string>>({})
+  const [tests, setTests] = useState<Record<string, string>>({})
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
 
@@ -102,6 +113,16 @@ export function Settings() {
       setMsg('Saved — applied immediately (no restart).')
     } catch (e) {
       setMsg('Save failed: ' + String(e))
+    }
+  }
+
+  async function test(svc: string, body: Record<string, string>) {
+    setTests({ ...tests, [svc]: 'testing…' })
+    try {
+      const r = await postJSON<{ ok: boolean; detail: string }>(`/settings/test/${svc}`, body)
+      setTests((t) => ({ ...t, [svc]: (r.ok ? '✓ ' : '✗ ') + r.detail }))
+    } catch (e) {
+      setTests((t) => ({ ...t, [svc]: '✗ ' + String(e) }))
     }
   }
 
@@ -134,6 +155,21 @@ export function Settings() {
               )}
             </div>
           ))}
+          {groupService[g.title] && (
+            <div style={{ marginTop: 4 }}>
+              <button
+                onClick={() => {
+                  // Send only edited values; the server falls back to saved ones
+                  // (so unedited secrets are never sent as the redacted mask).
+                  const gs = groupService[g.title]
+                  void test(gs.svc, gs.body((k) => edits[k] ?? ''))
+                }}
+              >
+                Test connection
+              </button>{' '}
+              <span>{tests[groupService[g.title].svc] ?? ''}</span>
+            </div>
+          )}
         </fieldset>
       ))}
       <button onClick={() => void save()} disabled={Object.keys(edits).length === 0}>
