@@ -408,7 +408,7 @@ const movieColumns = `id, tmdb_id, imdb_id, title, sort_title, year, overview,
 	tmdb_status, minimum_availability, release_date, digital_release,
 	physical_release, runtime, status, monitored, has_file, quality_profile_id,
 	root_folder_path, library_path, job_id, poster_path, backdrop_path,
-	metadata_json, last_metadata_sync, added_at, created_at, updated_at`
+	metadata_json, last_metadata_sync, added_at, created_at, updated_at, last_searched_at`
 
 func scanMovie(row scanner) (*media.Movie, error) {
 	var m media.Movie
@@ -416,14 +416,14 @@ func scanMovie(row scanner) (*media.Movie, error) {
 		year, runtime, jobID                              sql.NullInt64
 		imdb, relDate, digital, physical, libPath, poster sql.NullString
 		backdrop, meta                                    sql.NullString
-		lastSync                                          sql.NullTime
+		lastSync, lastSearched                            sql.NullTime
 		status                                            string
 		monitored, hasFile                                int
 	)
 	if err := row.Scan(&m.ID, &m.TMDBID, &imdb, &m.Title, &m.SortTitle, &year, &m.Overview,
 		&m.TMDBStatus, &m.MinimumAvailability, &relDate, &digital, &physical, &runtime,
 		&status, &monitored, &hasFile, &m.QualityProfileID, &m.RootFolderPath, &libPath,
-		&jobID, &poster, &backdrop, &meta, &lastSync, &m.AddedAt, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		&jobID, &poster, &backdrop, &meta, &lastSync, &m.AddedAt, &m.CreatedAt, &m.UpdatedAt, &lastSearched); err != nil {
 		return nil, err
 	}
 	m.Year, m.Runtime, m.JobID = int(year.Int64), int(runtime.Int64), jobID.Int64
@@ -434,7 +434,19 @@ func scanMovie(row scanner) (*media.Movie, error) {
 	if lastSync.Valid {
 		m.LastMetadataSync = &lastSync.Time
 	}
+	if lastSearched.Valid {
+		m.LastSearchedAt = &lastSearched.Time
+	}
 	return &m, nil
+}
+
+// MarkMovieSearched stamps last_searched_at=now on a movie (for the search cadence).
+func (s *Store) MarkMovieSearched(ctx context.Context, id int64) error {
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE movie SET last_searched_at=CURRENT_TIMESTAMP WHERE id=?`, id); err != nil {
+		return fmt.Errorf("marking movie searched: %w", err)
+	}
+	return nil
 }
 
 // CreateMovie inserts m (caller should GetMovieByTMDB first; tmdb_id is UNIQUE).

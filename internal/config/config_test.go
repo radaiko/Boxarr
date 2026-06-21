@@ -63,8 +63,8 @@ func TestLoadNewDefaults(t *testing.T) {
 	if c.MetadataInterval != 24*time.Hour {
 		t.Errorf("MetadataInterval default: %v, want 24h", c.MetadataInterval)
 	}
-	if c.SearchInterval != 6*time.Hour {
-		t.Errorf("SearchInterval default: %v, want 6h", c.SearchInterval)
+	if c.SearchInterval != time.Hour {
+		t.Errorf("SearchInterval default: %v, want 1h", c.SearchInterval)
 	}
 	if c.PlexScanTimeout != time.Minute {
 		t.Errorf("PlexScanTimeout default: %v, want 60s", c.PlexScanTimeout)

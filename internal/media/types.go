@@ -112,6 +112,7 @@ type Movie struct {
 	BackdropPath        string
 	MetadataJSON        string
 	LastMetadataSync    *time.Time
+	LastSearchedAt      *time.Time
 	AddedAt             time.Time
 	CreatedAt           time.Time
 	UpdatedAt           time.Time

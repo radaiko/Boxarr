@@ -47,6 +47,13 @@ func (s *Service) SearchWantedForMovie(ctx context.Context, movieID int64) error
 	if m.HasFile || !m.Monitored {
 		return nil
 	}
+	// Escalating, release-gated cadence: hourly for the first 48h after release,
+	// then daily for two weeks, then monthly — until acquired. A never-searched
+	// item (e.g. a fresh Seerr request) searches immediately.
+	if !searchDue(m.ReleaseDate, m.LastSearchedAt, time.Now()) {
+		return nil
+	}
+	_ = s.store.MarkMovieSearched(ctx, m.ID)
 	q := m.Title
 	if m.Year > 0 {
 		q = fmt.Sprintf("%s %d", m.Title, m.Year)
@@ -95,6 +102,10 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 		if ep.HasFile || !ep.Monitored || ep.AirDate == "" || ep.AirDate > today {
 			continue
 		}
+		// Release-gated escalating cadence (hourly 48h → daily 2wk → monthly).
+		if !searchDue(ep.AirDate, ep.LastSearchedAt, time.Now()) {
+			continue
+		}
 		q := fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber)
 		_ = s.store.MarkEpisodesSearched(ctx, ep.ID)
 		results, serr := s.search.Search(ctx, prowlarr.SearchParams{Query: q, Type: "tvsearch", Categories: []int{5000}})
@@ -117,6 +128,27 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 		}
 	}
 	return nil
+}
+
+// searchDue implements the release-aged search cadence: search hourly for the
+// first 48h after release, then daily for two weeks, then monthly. A never-
+// searched item (last == nil) is always due, so fresh requests search at once.
+func searchDue(releaseDate string, last *time.Time, now time.Time) bool {
+	if last == nil {
+		return true
+	}
+	interval := 30 * 24 * time.Hour // monthly (also the default when the date is unknown)
+	if releaseDate != "" {
+		if rd, err := time.Parse("2006-01-02", releaseDate); err == nil {
+			switch age := now.Sub(rd); {
+			case age < 48*time.Hour:
+				interval = time.Hour
+			case age < 14*24*time.Hour:
+				interval = 24 * time.Hour
+			}
+		}
+	}
+	return now.Sub(*last) >= interval
 }
 
 // pickBest scores results with the configured selection score and returns the

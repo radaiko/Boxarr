@@ -76,7 +76,7 @@ type Config struct {
 	// ── Intervals (NEW) ──
 	ReconcileInterval time.Duration `envconfig:"RECONCILE_INTERVAL" default:"15m"`
 	MetadataInterval  time.Duration `envconfig:"METADATA_REFRESH_INTERVAL" default:"24h"`
-	SearchInterval    time.Duration `envconfig:"SEARCH_INTERVAL" default:"6h"`
+	SearchInterval    time.Duration `envconfig:"SEARCH_INTERVAL" default:"1h"` // tick; per-item cadence gates actual searches
 
 	// ── Automation (NEW — Phase 5; default off, ships dark, FR-SR-4/FR-CAT-5) ──
 	AutomationEnabled bool `envconfig:"AUTOMATION_ENABLED" default:"false"`
