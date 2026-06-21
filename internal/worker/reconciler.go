@@ -41,6 +41,12 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 		byName[j.NZBName] = j
 	}
 
+	// Tombstones: paths deleted on TorBox that a stale rclone cache may still
+	// list. Skip re-adding them; track which we still see so we can clear the
+	// tombstone once the mount finally drops the folder.
+	tombs, _ := w.store.ListDeletedPaths(ctx)
+	seenTomb := map[string]bool{}
+
 	for _, base := range w.mountBases() {
 		entries, derr := os.ReadDir(base)
 		if derr != nil {
@@ -53,10 +59,22 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 			}
 			name := e.Name()
 			remotePath := filepath.Join(base, name)
-			size := dirSize(remotePath)
 
-			item := &webdav.WebDAVItem{Name: name, RemotePath: remotePath, Size: size}
-			if j, ok := byName[name]; ok {
+			j, matched := byName[name]
+			if tombs[remotePath] {
+				if matched {
+					// Re-acquired (a new job owns this path) — lift the tombstone.
+					_ = w.store.ClearDeletedPath(ctx, remotePath)
+					delete(tombs, remotePath)
+				} else {
+					// Still a stale listing of a deleted folder — don't re-add it.
+					seenTomb[remotePath] = true
+					continue
+				}
+			}
+
+			item := &webdav.WebDAVItem{Name: name, RemotePath: remotePath, Size: dirSize(remotePath)}
+			if matched {
 				item.Known = true
 				item.JobID = j.ID
 				item.Category = categoryOf(j.MediaType)
@@ -70,6 +88,13 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 			if !item.Known {
 				w.maybeNotifyUnknown(ctx, item)
 			}
+		}
+	}
+
+	// GC tombstones whose folder has finally disappeared from the mount.
+	for p := range tombs {
+		if !seenTomb[p] {
+			_ = w.store.ClearDeletedPath(ctx, p)
 		}
 	}
 

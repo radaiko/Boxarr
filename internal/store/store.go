@@ -291,6 +291,33 @@ func (s *Store) FindJobByMedia(ctx context.Context, mediaType string, mediaRef i
 	return s.findOne(ctx, `media_type=? AND media_ref=?`, mediaType, mediaRef)
 }
 
+// JobMedia is a job's polymorphic catalog link.
+type JobMedia struct {
+	MediaType string
+	MediaRef  int64
+}
+
+// JobMediaIndex maps job id → its (media_type, media_ref), so the WebDAV view can
+// resolve a tracked item's catalog entry via its linked job (robust when the
+// parsed folder title doesn't match the catalog title).
+func (s *Store) JobMediaIndex(ctx context.Context) (map[int64]JobMedia, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, media_type, media_ref FROM jobs WHERE media_ref != 0`)
+	if err != nil {
+		return nil, fmt.Errorf("indexing job media: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[int64]JobMedia{}
+	for rows.Next() {
+		var id int64
+		var jm JobMedia
+		if err := rows.Scan(&id, &jm.MediaType, &jm.MediaRef); err != nil {
+			return nil, err
+		}
+		out[id] = jm
+	}
+	return out, rows.Err()
+}
+
 // ActiveJobForMedia returns an in-flight (not failed/imported/deleted) job linked
 // to the catalog item, or nil — used to avoid grabbing the same media twice (e.g.
 // a later search picking a different tracker's release before the first finishes).

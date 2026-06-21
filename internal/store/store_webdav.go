@@ -120,6 +120,46 @@ func (s *Store) DeleteWebDAVItemByPath(ctx context.Context, remotePath string) e
 	return nil
 }
 
+// AddDeletedPath tombstones a path just deleted on TorBox so the reconciler does
+// not re-add it from a stale rclone listing before the mount catches up.
+func (s *Store) AddDeletedPath(ctx context.Context, remotePath string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO deleted_path (remote_path) VALUES (?)
+		 ON CONFLICT(remote_path) DO UPDATE SET deleted_at=CURRENT_TIMESTAMP`, remotePath)
+	if err != nil {
+		return fmt.Errorf("recording deleted path: %w", err)
+	}
+	return nil
+}
+
+// ListDeletedPaths returns the set of tombstoned paths.
+func (s *Store) ListDeletedPaths(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT remote_path FROM deleted_path`)
+	if err != nil {
+		return nil, fmt.Errorf("listing deleted paths: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]bool{}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out[p] = true
+	}
+	return out, rows.Err()
+}
+
+// ClearDeletedPath removes a tombstone (the path was re-acquired, or has finally
+// disappeared from the mount).
+func (s *Store) ClearDeletedPath(ctx context.Context, remotePath string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM deleted_path WHERE remote_path = ?`, remotePath)
+	if err != nil {
+		return fmt.Errorf("clearing deleted path: %w", err)
+	}
+	return nil
+}
+
 // WebDAVUsageByCategory returns non-broken mount bytes grouped by category (FR-ST-3).
 func (s *Store) WebDAVUsageByCategory(ctx context.Context) (map[string]int64, error) {
 	rows, err := s.db.QueryContext(ctx,

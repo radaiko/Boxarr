@@ -260,6 +260,11 @@ func (h *Handler) runDelete(ctx context.Context, ids []int64, run *task.Run) (de
 			h.deps.Logger.Warn("webdav delete: dropping row", "name", it.Name, "error", e)
 			failed++
 		} else {
+			// Tombstone the path so the reconciler doesn't re-add it from a stale
+			// rclone listing before the mount notices the TorBox deletion.
+			if e := h.deps.Store.AddDeletedPath(ctx, it.RemotePath); e != nil {
+				h.deps.Logger.Warn("webdav delete: tombstoning path", "name", it.Name, "error", e)
+			}
 			deleted++
 			if run != nil {
 				run.Detail(it.Name)
@@ -311,8 +316,9 @@ func (h *Handler) adoptWebDAV(w http.ResponseWriter, r *http.Request) {
 	if item.Known {
 		// Skip only if it genuinely resolves to a catalog entry. An orphaned
 		// known item (job present, catalog row gone) should be re-adoptable.
+		byTitle, _, _ := h.catalogIndex(ctx)
 		_, title, _, _ := classifyRelease(item.Name)
-		if _, ok := h.catalogByTitle(ctx)[normTitle(title)]; ok {
+		if _, ok := byTitle[normTitle(title)]; ok {
 			h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "skipped": "already in library"})
 			return
 		}
@@ -358,7 +364,8 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, "listing webdav items", err)
 		return
 	}
-	idx := h.catalogByTitle(r.Context())
+	byTitle, movieByID, seriesByID := h.catalogIndex(r.Context())
+	jobMedia, _ := h.deps.Store.JobMediaIndex(r.Context())
 	cat := r.URL.Query().Get("category")
 	out := make([]webdavItemDTO, 0, len(items))
 	for _, it := range items {
@@ -369,20 +376,28 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		dto := toWebDAVDTO(it)
-		// For tracked items, trust the catalog's real type + poster over the
-		// filename guess — so a tracked anime shows under Anime, not Series.
+		// Tracked items keep their known status (set by the reconciler/adopt); we
+		// only enrich them with the catalog's real type + poster + jump link.
+		// Resolve by title first, then fall back to the linked job's media so an
+		// item whose parsed folder title differs from the catalog title still links.
 		if it.Known {
-			if c, ok := idx[normTitle(dto.Title)]; ok {
+			c, ok := byTitle[normTitle(dto.Title)]
+			if !ok && dto.JobID != 0 {
+				if jm, has := jobMedia[dto.JobID]; has {
+					switch jm.MediaType {
+					case "movie":
+						c, ok = movieByID[jm.MediaRef]
+					case "series", "season":
+						c, ok = seriesByID[jm.MediaRef]
+					}
+				}
+			}
+			if ok {
 				dto.PosterPath = c.poster
 				dto.CatalogID = c.id
 				if c.kind != "" {
 					dto.Kind = c.kind
 				}
-			} else {
-				// Job-matched but no catalog entry (orphaned — e.g. the library
-				// item was deleted). Show it as unknown so the status is honest
-				// and it can be re-adopted, instead of a dead "tracked" link.
-				dto.Known = false
 			}
 		}
 		out = append(out, dto)
@@ -433,13 +448,17 @@ type catalogEntry struct {
 	id           int64
 }
 
-// catalogByTitle maps lower-cased catalog titles → {poster, kind, id}, so tracked
-// mount items can show their real cover + category and link to the catalog page.
-func (h *Handler) catalogByTitle(ctx context.Context) map[string]catalogEntry {
-	m := map[string]catalogEntry{}
+// catalogIndex returns catalog lookups for enriching tracked mount items: by
+// normalized title, by movie id, and by series id. Built once per WebDAV list.
+func (h *Handler) catalogIndex(ctx context.Context) (byTitle map[string]catalogEntry, movieByID, seriesByID map[int64]catalogEntry) {
+	byTitle = map[string]catalogEntry{}
+	movieByID = map[int64]catalogEntry{}
+	seriesByID = map[int64]catalogEntry{}
 	if ms, err := h.deps.Store.ListMovies(ctx); err == nil {
 		for _, mv := range ms {
-			m[strings.ToLower(mv.Title)] = catalogEntry{poster: mv.PosterPath, kind: "movie", id: mv.ID}
+			e := catalogEntry{poster: mv.PosterPath, kind: "movie", id: mv.ID}
+			byTitle[normTitle(mv.Title)] = e
+			movieByID[mv.ID] = e
 		}
 	}
 	if ss, err := h.deps.Store.ListSeries(ctx); err == nil {
@@ -448,8 +467,10 @@ func (h *Handler) catalogByTitle(ctx context.Context) map[string]catalogEntry {
 			if s.SeriesType == "anime" {
 				kind = "anime"
 			}
-			m[strings.ToLower(s.Title)] = catalogEntry{poster: s.PosterPath, kind: kind, id: s.ID}
+			e := catalogEntry{poster: s.PosterPath, kind: kind, id: s.ID}
+			byTitle[normTitle(s.Title)] = e
+			seriesByID[s.ID] = e
 		}
 	}
-	return m
+	return byTitle, movieByID, seriesByID
 }
