@@ -23,6 +23,14 @@ type fakeDeleter struct{ removed []int64 }
 func (f *fakeDeleter) RemoveImport(_ context.Context, jobID int64) {
 	f.removed = append(f.removed, jobID)
 }
+func (f *fakeDeleter) DeleteDownloads(_ context.Context, jobIDs []int64, report func(done, total int, name string)) {
+	for i, id := range jobIDs {
+		f.removed = append(f.removed, id)
+		if report != nil {
+			report(i+1, len(jobIDs), "job")
+		}
+	}
+}
 
 func TestDeleteTrackedItemTearsDownImport(t *testing.T) {
 	st := mkStore(t)

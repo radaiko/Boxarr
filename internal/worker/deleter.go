@@ -28,6 +28,41 @@ var deleteGiveUpAttempts = 60
 // files. TorBox's controlusenetdownload is intermittently flaky (HTTP 500,
 // "try again later"), so a failed attempt is retried on the next cycle rather
 // than dropping the request.
+// DeleteDownloads tears down the given jobs' downloads (TorBox + library symlinks
+// + the job row), best-effort, calling report(done, total, name) after each so a
+// background task can show progress and the list of removed releases. Used when a
+// tracked movie/series is deleted from the library.
+func (w *Workers) DeleteDownloads(ctx context.Context, jobIDs []int64, report func(done, total int, name string)) {
+	for i, id := range jobIDs {
+		name := ""
+		if j, err := w.store.GetJob(ctx, id); err == nil {
+			name = j.NZBName
+			if j.TorBoxID != 0 {
+				var derr error
+				if j.Protocol == "torrent" {
+					derr = w.tb.ControlTorrent(ctx, j.TorBoxID, "delete")
+				} else {
+					derr = w.tb.ControlUsenet(ctx, j.TorBoxID, "delete")
+				}
+				if derr != nil {
+					w.logger.Warn("delete download: torbox delete failed", "job_id", id, "error", derr)
+				}
+			}
+			if syms, e := w.store.ListImportedSymlinksByJob(ctx, id); e == nil {
+				for _, s := range syms {
+					_ = removeLibrarySymlink(s.SymlinkPath)
+				}
+			}
+			if e := w.store.DeleteJob(ctx, id); e != nil {
+				w.logger.Warn("delete download: dropping job row", "job_id", id, "error", e)
+			}
+		}
+		if report != nil {
+			report(i+1, len(jobIDs), name)
+		}
+	}
+}
+
 func (w *Workers) deleteOnce(ctx context.Context) error {
 	jobs, err := w.store.JobsByState(ctx, job.StateDeleted)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/media"
 	"github.com/radaiko/boxarr/internal/prowlarr"
+	"github.com/radaiko/boxarr/internal/task"
 )
 
 type seriesDTO struct {
@@ -334,26 +335,51 @@ func (h *Handler) deleteSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if _, err := h.deps.Store.GetSeries(ctx, id); err != nil {
+	s, err := h.deps.Store.GetSeries(ctx, id)
+	if err != nil {
 		h.writeError(w, http.StatusNotFound, "not_found", "series not found")
 		return
 	}
-	// Mark each episode's linked download for deletion (deleter propagates to TorBox).
 	episodes, _ := h.deps.Store.ListEpisodes(ctx, id)
+	var jobIDs []int64
 	for _, e := range episodes {
-		if e.JobID == 0 {
-			continue
-		}
-		if jb, jerr := h.deps.Store.GetJob(ctx, e.JobID); jerr == nil && jb.State.CanTransitionTo(job.StateDeleted) {
-			jb.State = job.StateDeleted
-			_ = h.deps.Store.UpdateJob(ctx, jb)
+		if e.JobID != 0 {
+			jobIDs = append(jobIDs, e.JobID)
 		}
 	}
 	if err := h.deps.Store.DeleteSeries(ctx, id); err != nil {
 		h.writeError(w, http.StatusInternalServerError, "internal", "deleting series")
 		return
 	}
+	h.deleteDownloadsBackground(ctx, s.Title, jobIDs)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteDownloadsBackground removes the given downloads (TorBox + symlinks + job
+// rows) as a visible background task. Falls back to marking them StateDeleted for
+// the deleter worker when no task runner / deleter is wired (tests).
+func (h *Handler) deleteDownloadsBackground(ctx context.Context, label string, jobIDs []int64) {
+	if len(jobIDs) == 0 {
+		return
+	}
+	if h.deps.Tasks != nil && h.deps.Deleter != nil {
+		h.deps.Tasks.Enqueue("delete", label, func(tctx context.Context, run *task.Run) error {
+			h.deps.Deleter.DeleteDownloads(tctx, jobIDs, func(done, total int, name string) {
+				run.Progress(done, total)
+				if name != "" {
+					run.Detail(name)
+				}
+			})
+			return nil
+		})
+		return
+	}
+	for _, jid := range jobIDs {
+		if jb, jerr := h.deps.Store.GetJob(ctx, jid); jerr == nil && jb.State.CanTransitionTo(job.StateDeleted) {
+			jb.State = job.StateDeleted
+			_ = h.deps.Store.UpdateJob(ctx, jb)
+		}
+	}
 }
 
 func (h *Handler) searchSeason(w http.ResponseWriter, r *http.Request) {

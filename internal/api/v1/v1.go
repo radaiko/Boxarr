@@ -39,6 +39,7 @@ type Adopter interface {
 // deleting it from the mount leaves nothing dangling (satisfied by worker.Workers).
 type Deleter interface {
 	RemoveImport(ctx context.Context, jobID int64)
+	DeleteDownloads(ctx context.Context, jobIDs []int64, report func(done, total int, name string))
 }
 
 // SeriesConverter switches a series between standard and anime, relocating its

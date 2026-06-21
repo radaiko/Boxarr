@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
-	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/media"
 )
 
@@ -153,18 +152,16 @@ func (h *Handler) deleteMovie(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "not_found", "movie not found")
 		return
 	}
-	// Mark any linked download for deletion so the deleter worker propagates it
-	// to TorBox; then drop the catalog row.
+	var jobIDs []int64
 	if m.JobID != 0 {
-		if j, jerr := h.deps.Store.GetJob(ctx, m.JobID); jerr == nil && j.State.CanTransitionTo(job.StateDeleted) {
-			j.State = job.StateDeleted
-			_ = h.deps.Store.UpdateJob(ctx, j)
-		}
+		jobIDs = []int64{m.JobID}
 	}
 	if err := h.deps.Store.DeleteMovie(ctx, id); err != nil {
 		h.writeError(w, http.StatusInternalServerError, "internal", "deleting movie")
 		return
 	}
+	// Remove the download (TorBox + symlinks) as a visible background task.
+	h.deleteDownloadsBackground(ctx, m.Title, jobIDs)
 	w.WriteHeader(http.StatusNoContent)
 }
 

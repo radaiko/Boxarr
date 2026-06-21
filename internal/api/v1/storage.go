@@ -140,8 +140,8 @@ func (h *Handler) deleteWebDAV(w http.ResponseWriter, r *http.Request) {
 	// Background it so a multi-item delete survives the user navigating away.
 	if h.deps.Tasks != nil {
 		label := plural(len(ids), "item", "items")
-		id := h.deps.Tasks.Enqueue("delete", label, func(ctx context.Context, prog task.Progress) error {
-			h.runDelete(ctx, ids, prog)
+		id := h.deps.Tasks.Enqueue("delete", label, func(ctx context.Context, run *task.Run) error {
+			h.runDelete(ctx, ids, run)
 			return nil
 		})
 		h.writeJSON(w, http.StatusAccepted, map[string]any{"taskId": id, "queued": true})
@@ -150,6 +150,8 @@ func (h *Handler) deleteWebDAV(w http.ResponseWriter, r *http.Request) {
 	deleted, failed := h.runDelete(r.Context(), ids, nil)
 	h.writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "failed": failed})
 }
+
+// adoptWebDAV / runDelete report via *task.Run when backgrounded (nil when inline).
 
 func plural(n int, one, many string) string {
 	if n == 1 {
@@ -161,9 +163,9 @@ func plural(n int, one, many string) string {
 // runDelete removes the given mount items: matching TorBox download (mylists
 // fetched once), the mount folder, and the row — tearing down tracked imports
 // first so no library symlink dangles.
-func (h *Handler) runDelete(ctx context.Context, ids []int64, prog task.Progress) (deleted, failed int) {
-	if prog != nil {
-		prog(0, len(ids))
+func (h *Handler) runDelete(ctx context.Context, ids []int64, run *task.Run) (deleted, failed int) {
+	if run != nil {
+		run.Progress(0, len(ids))
 	}
 	all, err := h.deps.Store.ListWebDAVItems(ctx)
 	if err != nil {
@@ -190,8 +192,8 @@ func (h *Handler) runDelete(ctx context.Context, ids []int64, prog task.Progress
 	for i, id := range ids {
 		it := byID[id]
 		if it == nil {
-			if prog != nil {
-				prog(i+1, len(ids))
+			if run != nil {
+				run.Progress(i+1, len(ids))
 			}
 			continue
 		}
@@ -224,9 +226,12 @@ func (h *Handler) runDelete(ctx context.Context, ids []int64, prog task.Progress
 			failed++
 		} else {
 			deleted++
+			if run != nil {
+				run.Detail(it.Name)
+			}
 		}
-		if prog != nil {
-			prog(i+1, len(ids))
+		if run != nil {
+			run.Progress(i+1, len(ids))
 		}
 	}
 	return deleted, failed
@@ -289,7 +294,13 @@ func (h *Handler) adoptWebDAV(w http.ResponseWriter, r *http.Request) {
 	// Run adopts in the background so they survive the user navigating away (the
 	// import can take a while); fall back to inline when no task runner is wired.
 	if h.deps.Tasks != nil {
-		id := h.deps.Tasks.Enqueue("adopt", name, func(ctx context.Context, _ task.Progress) error { return adopt(ctx) })
+		id := h.deps.Tasks.Enqueue("adopt", name, func(ctx context.Context, run *task.Run) error {
+			err := adopt(ctx)
+			if err == nil {
+				run.Detail(name)
+			}
+			return err
+		})
 		h.writeJSON(w, http.StatusAccepted, map[string]any{"taskId": id, "queued": true})
 		return
 	}

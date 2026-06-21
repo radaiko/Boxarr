@@ -275,6 +275,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .wd-cover-unknown { display: grid; place-items: center; color: var(--text-faint); border: 1px dashed var(--border); background: var(--bg-2); }
 .wd-cover-unknown svg { width: 16px; height: 16px; }
 .wd-group > summary .wd-cover { margin: -3px 2px -3px 0; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: #ffffff05; }
+.task-details-row td { padding-top: 0; }
+.task-details { margin: 0 0 6px; padding-left: 18px; list-style: none; }
+.task-details li { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); padding: 2px 0; border-bottom: 1px solid var(--border-soft); word-break: break-all; }
 .progress { position: relative; height: 18px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
 .progress-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); border-right: 1px solid var(--accent); }
 .progress-label { position: relative; display: block; text-align: center; font-family: var(--mono); font-size: 11px; line-height: 18px; color: var(--text); }

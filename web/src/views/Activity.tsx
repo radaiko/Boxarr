@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Fragment } from 'react'
 import { getJSON } from '../api'
 import { Icon, Loading, ErrorBanner, Empty, ago } from '../ui'
 
 interface Download { id: number; name: string; state: string; mediaType: string; progress: number; protocol: string; createdAt: string }
-interface BgTask { id: number; type: string; label: string; state: string; current?: number; total?: number; error?: string; createdAt: string; finishedAt?: string }
+interface BgTask { id: number; type: string; label: string; state: string; current?: number; total?: number; details?: string[]; error?: string; createdAt: string; finishedAt?: string }
 
 const DL_PILL: Record<string, string> = {
   downloading: 'downloading', seeding: 'downloading', completed: 'available',
@@ -14,6 +14,7 @@ const TASK_PILL: Record<string, string> = { running: 'searching', done: 'availab
 export function Activity() {
   const [data, setData] = useState<{ downloads: Download[]; tasks: BgTask[] } | null>(null)
   const [err, setErr] = useState('')
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   function load() {
     getJSON<{ downloads: Download[]; tasks: BgTask[] }>('/activity')
@@ -63,22 +64,39 @@ export function Activity() {
           <table className="tbl">
             <thead><tr><th style={{ width: 90 }}>Action</th><th>Item</th><th style={{ width: 130 }}>State</th><th style={{ width: 120 }}>When</th></tr></thead>
             <tbody>
-              {data.tasks.map((t) => (
-                <tr key={t.id}>
-                  <td className="muted" style={{ textTransform: 'capitalize' }}>{t.type}</td>
-                  <td className="rel-title">
-                    {t.label}
-                    {t.error && <div className="test-bad" style={{ fontSize: 11, marginTop: 3 }}>{t.error}</div>}
-                  </td>
-                  <td>
-                    <span className={`status ${TASK_PILL[t.state] ?? 'idle'}`}>{t.state}</span>
-                    {t.state === 'running' && (t.total ?? 0) > 0 && (
-                      <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>{t.current}/{t.total}</span>
+              {data.tasks.map((t) => {
+                const details = t.details ?? []
+                const open = expanded.has(t.id)
+                return (
+                  <Fragment key={t.id}>
+                    <tr className={details.length ? 'clickable' : ''}
+                      onClick={() => details.length && setExpanded((s) => { const n = new Set(s); n.has(t.id) ? n.delete(t.id) : n.add(t.id); return n })}>
+                      <td className="muted" style={{ textTransform: 'capitalize' }}>{t.type}</td>
+                      <td className="rel-title">
+                        {details.length > 0 && <span className="muted" style={{ marginRight: 6 }}>{open ? '▾' : '▸'}</span>}
+                        {t.label}
+                        {details.length > 0 && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>({details.length})</span>}
+                        {t.error && <div className="test-bad" style={{ fontSize: 11, marginTop: 3 }}>{t.error}</div>}
+                      </td>
+                      <td>
+                        <span className={`status ${TASK_PILL[t.state] ?? 'idle'}`}>{t.state}</span>
+                        {t.state === 'running' && (t.total ?? 0) > 0 && (
+                          <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>{t.current}/{t.total}</span>
+                        )}
+                      </td>
+                      <td className="muted" style={{ fontSize: 12 }}>{ago(t.finishedAt || t.createdAt)}</td>
+                    </tr>
+                    {open && (
+                      <tr className="task-details-row">
+                        <td />
+                        <td colSpan={3}>
+                          <ul className="task-details">{details.map((d, i) => <li key={i}>{d}</li>)}</ul>
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="muted" style={{ fontSize: 12 }}>{ago(t.finishedAt || t.createdAt)}</td>
-                </tr>
-              ))}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

@@ -18,18 +18,28 @@ type Task struct {
 	State      string     `json:"state"` // queued | running | done | error
 	Current    int        `json:"current,omitempty"`
 	Total      int        `json:"total,omitempty"`
+	Details    []string   `json:"details,omitempty"` // per-item lines (e.g. files deleted)
 	Error      string     `json:"error,omitempty"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 
-// Progress reports how far a running task is (done out of total).
-type Progress func(done, total int)
+// Run is handed to a task fn to report progress and per-item detail lines.
+type Run struct {
+	mgr *Manager
+	t   *Task
+}
+
+// Progress sets how far the task is (done out of total).
+func (r *Run) Progress(done, total int) { r.mgr.setProgress(r.t, done, total) }
+
+// Detail appends a line (e.g. the name of a file just deleted).
+func (r *Run) Detail(line string) { r.mgr.addDetail(r.t, line) }
 
 type queued struct {
 	t  *Task
-	fn func(context.Context, Progress) error
+	fn func(context.Context, *Run) error
 }
 
 // Manager owns the queue + recent-task history.
@@ -57,8 +67,7 @@ func (m *Manager) run() {
 			return
 		case j := <-m.queue:
 			m.set(j.t, "running", "")
-			progress := func(done, total int) { m.setProgress(j.t, done, total) }
-			err := j.fn(m.ctx, progress)
+			err := j.fn(m.ctx, &Run{mgr: m, t: j.t})
 			if err != nil {
 				m.set(j.t, "error", err.Error())
 			} else {
@@ -74,9 +83,17 @@ func (m *Manager) setProgress(t *Task, done, total int) {
 	t.Current, t.Total = done, total
 }
 
+func (m *Manager) addDetail(t *Task, line string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(t.Details) < 1000 {
+		t.Details = append(t.Details, line)
+	}
+}
+
 // Enqueue records a task and schedules fn to run on the background worker. fn
-// receives a Progress callback to report done/total as it works.
-func (m *Manager) Enqueue(typ, label string, fn func(context.Context, Progress) error) int64 {
+// receives a *Run to report progress + per-item detail lines.
+func (m *Manager) Enqueue(typ, label string, fn func(context.Context, *Run) error) int64 {
 	m.mu.Lock()
 	m.seq++
 	t := &Task{ID: m.seq, Type: typ, Label: label, State: "queued", CreatedAt: m.now()}
