@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/radaiko/boxarr/internal/webdav"
 )
@@ -71,9 +70,22 @@ func (s *Store) webdavItems(ctx context.Context, query string, args ...any) ([]*
 	return out, rows.Err()
 }
 
+// DBNow returns the database clock as a CURRENT_TIMESTAMP-format string. The
+// reconciler captures this at the start of a sweep so stale-detection compares
+// like-for-like against last_seen (also set from the DB clock) — avoiding the
+// timezone/format mismatch of comparing a Go local time against SQLite UTC.
+func (s *Store) DBNow(ctx context.Context) (string, error) {
+	var now string
+	if err := s.db.QueryRowContext(ctx, `SELECT CURRENT_TIMESTAMP`).Scan(&now); err != nil {
+		return "", fmt.Errorf("reading db clock: %w", err)
+	}
+	return now, nil
+}
+
 // MarkWebDAVItemsBrokenNotSeenSince flags items whose last_seen predates this
-// sweep (gone from the mount) and returns how many were flagged.
-func (s *Store) MarkWebDAVItemsBrokenNotSeenSince(ctx context.Context, sweep time.Time) (int64, error) {
+// sweep marker (gone from the mount) and returns how many were flagged. sweep
+// must be a DB-clock timestamp from DBNow so the comparison is like-for-like.
+func (s *Store) MarkWebDAVItemsBrokenNotSeenSince(ctx context.Context, sweep string) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE webdav_item SET is_broken=1 WHERE last_seen < ?`, sweep)
 	if err != nil {

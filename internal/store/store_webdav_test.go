@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/radaiko/boxarr/internal/webdav"
 )
@@ -36,8 +35,9 @@ func TestWebDAVUpsertAndUsage(t *testing.T) {
 		t.Fatalf("ListUnknownWebDAVItems: %+v", unk)
 	}
 
-	// Items not seen since a future sweep are marked broken and drop out of usage.
-	n, err := st.MarkWebDAVItemsBrokenNotSeenSince(ctx, time.Now().Add(time.Hour))
+	// Items not seen since a future sweep marker are marked broken and drop out
+	// of usage. "9999-..." is safely after any real last_seen.
+	n, err := st.MarkWebDAVItemsBrokenNotSeenSince(ctx, "9999-01-01 00:00:00")
 	if err != nil {
 		t.Fatalf("MarkWebDAVItemsBrokenNotSeenSince: %v", err)
 	}
@@ -46,5 +46,31 @@ func TestWebDAVUpsertAndUsage(t *testing.T) {
 	}
 	if got, _ := st.WebDAVUsageBytes(ctx); got != 0 {
 		t.Fatalf("usage after all-broken = %d, want 0", got)
+	}
+}
+
+// Regression: an item seen during the current sweep must NOT be marked broken.
+// (Previously a Go local time vs SQLite UTC CURRENT_TIMESTAMP mismatch flagged
+// every fresh item, hiding all mount content.)
+func TestWebDAVFreshItemsNotMarkedBroken(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	sweep, err := st.DBNow(ctx) // captured at sweep start, DB clock
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertWebDAVItem(ctx, &webdav.WebDAVItem{
+		Name: "Fresh", RemotePath: "/mnt/torbox/Fresh", Size: 10, Category: "movie"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.MarkWebDAVItemsBrokenNotSeenSince(ctx, sweep); err != nil {
+		t.Fatal(err)
+	}
+	it, err := st.GetWebDAVItemByPath(ctx, "/mnt/torbox/Fresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.IsBroken {
+		t.Error("a just-seen item must not be flagged broken")
 	}
 }

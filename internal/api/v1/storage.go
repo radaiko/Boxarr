@@ -2,8 +2,10 @@ package v1
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/release"
 	"github.com/radaiko/boxarr/internal/webdav"
 )
 
@@ -60,13 +62,45 @@ type webdavItemDTO struct {
 	IsBroken   bool   `json:"isBroken"`
 	FirstSeen  string `json:"firstSeen"`
 	LastSeen   string `json:"lastSeen"`
+	// Parsed from the folder name so the UI can group by title (kind = movie |
+	// series | anime | unknown).
+	Kind    string `json:"kind"`
+	Title   string `json:"title"`
+	Season  int    `json:"season,omitempty"`
+	Episode int    `json:"episode,omitempty"`
 }
 
 func toWebDAVDTO(it *webdav.WebDAVItem) webdavItemDTO {
+	kind, title, season, episode := classifyRelease(it.Name)
 	return webdavItemDTO{
 		ID: it.ID, Name: it.Name, RemotePath: it.RemotePath, Size: it.Size,
 		Category: it.Category, Known: it.Known, JobID: it.JobID, IsBroken: it.IsBroken,
 		FirstSeen: rfc3339(it.FirstSeen), LastSeen: rfc3339(it.LastSeen),
+		Kind: kind, Title: title, Season: season, Episode: episode,
+	}
+}
+
+// classifyRelease parses a mount folder name into a grouping kind + a display
+// title (so the UI can cluster episodes under their show). Heuristics mirror the
+// reconciler's guessCategory, plus anime detection.
+func classifyRelease(name string) (kind, title string, season, episode int) {
+	p, err := release.ParseRelease(name)
+	if err != nil || p == nil {
+		return "unknown", name, 0, 0
+	}
+	title = strings.TrimSpace(p.Title)
+	if title == "" {
+		title = name
+	}
+	switch {
+	case p.IsAnime || len(p.AbsoluteEpisodes) > 0:
+		return "anime", title, p.SeasonNumber, p.EpisodeStart
+	case p.SeasonNumber > 0 || p.EpisodeStart > 0 || p.IsSeasonPack || p.AirDate != "":
+		return "series", title, p.SeasonNumber, p.EpisodeStart
+	case p.Year > 0:
+		return "movie", title, 0, 0
+	default:
+		return "unknown", title, 0, 0
 	}
 }
 

@@ -20,7 +20,12 @@ func (w *Workers) Reconcile(ctx context.Context) error { return w.reconcileOnce(
 // and raises an unknown_content notification for items Boxarr did not submit
 // (FR-NC-1/2, FR-WD-1/2/3).
 func (w *Workers) reconcileOnce(ctx context.Context) error {
-	sweepStart := timeNow()
+	// Capture the sweep marker from the DB clock (not Go's local clock) so the
+	// stale check below compares like-for-like against last_seen.
+	sweepStart, err := w.store.DBNow(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Index known jobs by release-folder base name (storage_path) and torbox hash.
 	jobs, err := w.store.JobsByState(ctx,

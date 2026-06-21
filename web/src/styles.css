@@ -240,8 +240,25 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 /* ── Seasons / episodes ────────────────────────────────────────────────── */
 .season-head { display: flex; align-items: center; gap: 12px; margin: 22px 0 10px; }
+.season-head svg { width: 18px; height: 18px; flex: none; color: var(--accent); }
 .season-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
 .ep-num { font-family: var(--mono); color: var(--accent); font-size: 12px; }
+
+/* ── WebDAV grouped view ───────────────────────────────────────────────── */
+.wd-group { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); margin-bottom: 8px; }
+.wd-group > summary {
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px; cursor: pointer;
+  list-style: none; user-select: none;
+}
+.wd-group > summary::-webkit-details-marker { display: none; }
+.wd-group > summary::before {
+  content: "▸"; color: var(--text-faint); font-size: 11px; transition: transform .12s;
+}
+.wd-group[open] > summary::before { transform: rotate(90deg); }
+.wd-group > summary:hover { background: #ffffff05; }
+.wd-group-title { font-weight: 600; }
+.wd-group-meta { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+.wd-group .table-wrap { border: 0; border-top: 1px solid var(--border-soft); border-radius: 0; }
 
 /* ── Detail header ─────────────────────────────────────────────────────── */
 .detail-head { display: flex; gap: 22px; align-items: flex-start; }
