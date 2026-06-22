@@ -7,8 +7,10 @@ import { Series } from './views/Series'
 import { Notifications } from './views/Notifications'
 import { TorBox } from './views/TorBox'
 import { Activity } from './views/Activity'
+import { Dashboard } from './views/Dashboard'
 
 const NAV = [
+  { id: 'Home', icon: 'home', group: 'Overview' },
   { id: 'Movies', icon: 'movies', group: 'Library' },
   { id: 'Series', icon: 'series', group: 'Library' },
   { id: 'Anime', icon: 'anime', group: 'Library' },
@@ -25,7 +27,7 @@ interface Status {
 }
 
 export function App() {
-  const [view, setView] = useState<View>('Movies')
+  const [view, setView] = useState<View>('Home')
   const [status, setStatus] = useState<Status | null>(null)
   // Cross-view jump: when a tracked WebDAV item is clicked, open its catalog page.
   const [openTarget, setOpenTarget] = useState<{ view: View; id: number; seq: number } | null>(null)
@@ -94,6 +96,7 @@ export function App() {
           </div>
         </header>
         <main className="content">
+          {view === 'Home' && <Dashboard onNavigate={(v) => setView(v as View)} onOpenCatalog={openCatalog} />}
           {view === 'Movies' && <Movies openId={openFor('Movies')?.id} openSeq={openFor('Movies')?.seq} />}
           {view === 'Series' && <Series openId={openFor('Series')?.id} openSeq={openFor('Series')?.seq} />}
           {view === 'Anime' && <Series anime openId={openFor('Anime')?.id} openSeq={openFor('Anime')?.seq} />}

@@ -292,6 +292,22 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .season-toggle:hover h3 { color: var(--accent); }
 .note.clickable { cursor: pointer; }
 .note.clickable:hover { border-color: var(--accent); background: var(--surface-2); }
+
+/* ── Dashboard ── */
+.dash-stat { text-align: left; cursor: pointer; border: 1px solid var(--border); font: inherit; }
+.dash-stat:hover { border-color: var(--accent); }
+.dash-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 18px; }
+.dash-panel { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 14px 16px; }
+.dash-panel .season-head { margin: 0 0 8px; }
+.dash-panel-body { display: flex; flex-direction: column; }
+.dash-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.dash-row:first-child { border-top: none; }
+.dash-row.clickable { cursor: pointer; }
+.dash-row.clickable:hover .dash-row-main { color: var(--accent); }
+.dash-row-main { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-row-time { font-size: 11px; flex: none; }
+.dash-pct { font-family: var(--mono); font-size: 12px; color: var(--info); flex: none; }
+.dash-empty { color: var(--text-faint); font-size: 13px; margin: 6px 0; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: #ffffff05; }
 .task-details-row td { padding-top: 0; }
