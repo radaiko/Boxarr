@@ -111,6 +111,20 @@ func (s *Store) SetWebDAVItemKnown(ctx context.Context, remotePath string, known
 	return nil
 }
 
+// PruneStaleWebDAVItems deletes broken mount rows not seen for graceDays — old
+// TorBox-rotated content / one-off streams — so the table doesn't grow unbounded.
+// If the content reappears on the mount the reconciler simply re-adds it. Returns
+// the number of rows removed.
+func (s *Store) PruneStaleWebDAVItems(ctx context.Context, graceDays int) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM webdav_item WHERE is_broken=1 AND last_seen < datetime('now', ?)`,
+		fmt.Sprintf("-%d days", graceDays))
+	if err != nil {
+		return 0, fmt.Errorf("pruning stale webdav items: %w", err)
+	}
+	return res.RowsAffected()
+}
+
 // DeleteWebDAVItemByPath removes a mount item row (after deleting it on TorBox).
 func (s *Store) DeleteWebDAVItemByPath(ctx context.Context, remotePath string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM webdav_item WHERE remote_path = ?`, remotePath)

@@ -104,6 +104,12 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 	if _, err := w.store.MarkWebDAVItemsBrokenNotSeenSince(ctx, sweepStart); err != nil {
 		w.logger.Error("reconcile: marking stale items broken", "error", err)
 	}
+	// Prune long-broken rows (TorBox-rotated content) so the table stays bounded.
+	if n, err := w.store.PruneStaleWebDAVItems(ctx, 7); err != nil {
+		w.logger.Warn("reconcile: pruning stale items", "error", err)
+	} else if n > 0 {
+		w.logger.Info("reconcile: pruned stale mount rows", "count", n)
+	}
 	return nil
 }
 
