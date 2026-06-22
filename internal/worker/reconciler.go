@@ -28,8 +28,11 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 	}
 
 	// Index known jobs by release-folder base name (storage_path) and torbox hash.
+	// Include healing/heal-failed so an item mid-heal (or that exhausted heals)
+	// stays tracked on the mount instead of flipping to "unknown".
 	jobs, err := w.store.JobsByState(ctx,
-		job.StateCompleted, job.StateImported, job.StateDownloading, job.StateSeeding, job.StateQueued)
+		job.StateCompleted, job.StateImported, job.StateDownloading, job.StateSeeding,
+		job.StateQueued, job.StateHealing, job.StateHealFailed)
 	if err != nil {
 		return err
 	}
