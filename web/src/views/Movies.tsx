@@ -45,7 +45,9 @@ export function Movies({ openId, openSeq }: { openId?: number; openSeq?: number 
               <div className="poster-title">{m.title}</div>
               <div className="row-between">
                 <span className="poster-meta">{m.year || '—'}</span>
-                <Status value={m.status} hasFile={m.hasFile} />
+                {m.langMissing
+                  ? <span className="status broken" title="No German/English audio or subtitles">lang?</span>
+                  : <Status value={m.status} hasFile={m.hasFile} />}
               </div>
             </button>
           ))}

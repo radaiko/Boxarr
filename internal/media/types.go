@@ -78,6 +78,7 @@ type Episode struct {
 	Status         MediaStatus
 	Monitored      bool
 	HasFile        bool
+	LangMissing    bool  // no acceptable audio/subtitle language (per Plex check)
 	JobID          int64 // 0 = none
 	LibraryPath    string
 	MetadataJSON   string
@@ -104,6 +105,7 @@ type Movie struct {
 	Status              MediaStatus
 	Monitored           bool
 	HasFile             bool
+	LangMissing         bool // no acceptable audio/subtitle language (per Plex check)
 	QualityProfileID    int64
 	RootFolderPath      string
 	LibraryPath         string

@@ -62,7 +62,10 @@ func (s *Service) tryUpgradeMovie(ctx context.Context, m *media.Movie, now time.
 	}
 	cfg := s.set.SelectionConfigFor("movie")
 	ideal := idealLangs(cfg)
-	if languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) || !searchDue(m.ReleaseDate, m.LastSearchedAt, now, s.cadenceFromSettings()) {
+	// Satisfied only if the release name reaches the ideal AND Plex didn't flag
+	// the actual file as language-missing.
+	satisfied := languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) && !m.LangMissing
+	if satisfied || !searchDue(m.ReleaseDate, m.LastSearchedAt, now, s.cadenceFromSettings()) {
 		return
 	}
 	if active, _ := s.store.ActiveJobForMedia(ctx, "movie", m.ID); active != nil {
@@ -89,7 +92,10 @@ func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *m
 	}
 	cfg := s.set.SelectionConfigFor(kind)
 	ideal := idealLangs(cfg)
-	if languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) || !searchDue(ep.AirDate, ep.LastSearchedAt, now, s.cadenceFromSettings()) {
+	// Anime is normally language-satisfied (DE==EN), but if Plex flagged the file
+	// as having no acceptable language, re-search it.
+	satisfied := languageSatisfied(cur.NZBName, ideal, cfg.RequireAnyLanguage) && !ep.LangMissing
+	if satisfied || !searchDue(ep.AirDate, ep.LastSearchedAt, now, s.cadenceFromSettings()) {
 		return
 	}
 	if active, _ := s.store.ActiveJobForMedia(ctx, "episode", ep.ID); active != nil {

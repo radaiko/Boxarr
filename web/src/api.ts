@@ -82,6 +82,7 @@ export interface Movie {
   monitored: boolean
   status: string
   hasFile: boolean
+  langMissing?: boolean
   posterPath?: string
   overview?: string
   libraryPath?: string
@@ -168,6 +169,7 @@ export interface Episode {
   status: string
   monitored: boolean
   hasFile: boolean
+  langMissing?: boolean
   file?: FileMeta
   lastSearched?: string
 }

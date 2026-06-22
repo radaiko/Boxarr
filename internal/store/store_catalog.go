@@ -250,7 +250,7 @@ func (s *Store) SetSeasonMonitored(ctx context.Context, id int64, monitored bool
 const episodeColumns = `id, series_id, season_id, season_number, episode_number,
 	absolute_number, tmdb_id, tvdb_id, title, overview, air_date, runtime,
 	still_path, status, monitored, has_file, job_id, library_path,
-	metadata_json, last_searched_at, created_at, updated_at`
+	metadata_json, last_searched_at, created_at, updated_at, lang_missing`
 
 func scanEpisode(row scanner) (*media.Episode, error) {
 	var m media.Episode
@@ -259,12 +259,12 @@ func scanEpisode(row scanner) (*media.Episode, error) {
 		airDate, still, libPath, meta          sql.NullString
 		lastSearched                           sql.NullTime
 		status                                 string
-		monitored, hasFile                     int
+		monitored, hasFile, langMissing        int
 	)
 	if err := row.Scan(&m.ID, &m.SeriesID, &m.SeasonID, &m.SeasonNumber, &m.EpisodeNumber,
 		&absNum, &tmdbID, &tvdbID, &m.Title, &m.Overview, &airDate, &runtime,
 		&still, &status, &monitored, &hasFile, &jobID, &libPath, &meta,
-		&lastSearched, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		&lastSearched, &m.CreatedAt, &m.UpdatedAt, &langMissing); err != nil {
 		return nil, err
 	}
 	m.AbsoluteNumber, m.TMDBID, m.TVDBID = int(absNum.Int64), tmdbID.Int64, tvdbID.Int64
@@ -274,8 +274,33 @@ func scanEpisode(row scanner) (*media.Episode, error) {
 		m.LastSearchedAt = &lastSearched.Time
 	}
 	m.Status = media.MediaStatus(status)
-	m.Monitored, m.HasFile = monitored != 0, hasFile != 0
+	m.Monitored, m.HasFile, m.LangMissing = monitored != 0, hasFile != 0, langMissing != 0
 	return &m, nil
+}
+
+// SetEpisodeLangMissing flags whether an episode lacks an acceptable language.
+func (s *Store) SetEpisodeLangMissing(ctx context.Context, id int64, missing bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE episode SET lang_missing=? WHERE id=?`, b2iCat(missing), id)
+	if err != nil {
+		return fmt.Errorf("setting episode lang_missing: %w", err)
+	}
+	return nil
+}
+
+// SetMovieLangMissing flags whether a movie lacks an acceptable language.
+func (s *Store) SetMovieLangMissing(ctx context.Context, id int64, missing bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE movie SET lang_missing=? WHERE id=?`, b2iCat(missing), id)
+	if err != nil {
+		return fmt.Errorf("setting movie lang_missing: %w", err)
+	}
+	return nil
+}
+
+func b2iCat(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // MarkEpisodesSearched stamps last_searched_at=now on the given episodes.
@@ -408,7 +433,7 @@ const movieColumns = `id, tmdb_id, imdb_id, title, sort_title, year, overview,
 	tmdb_status, minimum_availability, release_date, digital_release,
 	physical_release, runtime, status, monitored, has_file, quality_profile_id,
 	root_folder_path, library_path, job_id, poster_path, backdrop_path,
-	metadata_json, last_metadata_sync, added_at, created_at, updated_at, last_searched_at`
+	metadata_json, last_metadata_sync, added_at, created_at, updated_at, last_searched_at, lang_missing`
 
 func scanMovie(row scanner) (*media.Movie, error) {
 	var m media.Movie
@@ -418,19 +443,19 @@ func scanMovie(row scanner) (*media.Movie, error) {
 		backdrop, meta                                    sql.NullString
 		lastSync, lastSearched                            sql.NullTime
 		status                                            string
-		monitored, hasFile                                int
+		monitored, hasFile, langMissing                   int
 	)
 	if err := row.Scan(&m.ID, &m.TMDBID, &imdb, &m.Title, &m.SortTitle, &year, &m.Overview,
 		&m.TMDBStatus, &m.MinimumAvailability, &relDate, &digital, &physical, &runtime,
 		&status, &monitored, &hasFile, &m.QualityProfileID, &m.RootFolderPath, &libPath,
-		&jobID, &poster, &backdrop, &meta, &lastSync, &m.AddedAt, &m.CreatedAt, &m.UpdatedAt, &lastSearched); err != nil {
+		&jobID, &poster, &backdrop, &meta, &lastSync, &m.AddedAt, &m.CreatedAt, &m.UpdatedAt, &lastSearched, &langMissing); err != nil {
 		return nil, err
 	}
 	m.Year, m.Runtime, m.JobID = int(year.Int64), int(runtime.Int64), jobID.Int64
 	m.IMDBID, m.ReleaseDate, m.DigitalRelease, m.PhysicalRelease = imdb.String, relDate.String, digital.String, physical.String
 	m.LibraryPath, m.PosterPath, m.BackdropPath, m.MetadataJSON = libPath.String, poster.String, backdrop.String, meta.String
 	m.Status = media.MediaStatus(status)
-	m.Monitored, m.HasFile = monitored != 0, hasFile != 0
+	m.Monitored, m.HasFile, m.LangMissing = monitored != 0, hasFile != 0, langMissing != 0
 	if lastSync.Valid {
 		m.LastMetadataSync = &lastSync.Time
 	}

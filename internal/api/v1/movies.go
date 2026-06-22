@@ -22,6 +22,7 @@ type movieDTO struct {
 	Monitored           bool      `json:"monitored"`
 	Status              string    `json:"status"`
 	HasFile             bool      `json:"hasFile"`
+	LangMissing         bool      `json:"langMissing,omitempty"`
 	MinimumAvailability string    `json:"minimumAvailability"`
 	ReleaseDate         string    `json:"releaseDate,omitempty"`
 	Runtime             int       `json:"runtime,omitempty"`
@@ -38,7 +39,7 @@ type movieDTO struct {
 func toMovieDTO(m *media.Movie) movieDTO {
 	return movieDTO{
 		ID: m.ID, TMDBID: m.TMDBID, IMDBID: m.IMDBID, Title: m.Title, Year: m.Year,
-		Overview: m.Overview, Monitored: m.Monitored, Status: string(m.Status), HasFile: m.HasFile,
+		Overview: m.Overview, Monitored: m.Monitored, Status: string(m.Status), HasFile: m.HasFile, LangMissing: m.LangMissing,
 		MinimumAvailability: m.MinimumAvailability, ReleaseDate: m.ReleaseDate, Runtime: m.Runtime,
 		QualityProfileID: m.QualityProfileID, RootFolderPath: m.RootFolderPath, LibraryPath: m.LibraryPath,
 		PosterPath: m.PosterPath, BackdropPath: m.BackdropPath, TMDBStatus: m.TMDBStatus,

@@ -112,6 +112,7 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
                     <td style={{ width: 56 }}><span className="ep-num">E{pad(ep.episodeNumber)}</span></td>
                     <td>
                       {ep.title || '—'}
+                      {ep.langMissing && <span className="status broken" title="No German/English audio or subtitles — searching for a better release" style={{ marginLeft: 8 }}>lang?</span>}
                       {ep.file && (
                         <div className="ep-file">
                           <span className="ep-file-name" title={ep.file.path || ep.file.name}>{ep.file.name}</span>

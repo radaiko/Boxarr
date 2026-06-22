@@ -49,6 +49,7 @@ type episodeDTO struct {
 	Status        string    `json:"status"`
 	Monitored     bool      `json:"monitored"`
 	HasFile       bool      `json:"hasFile"`
+	LangMissing   bool      `json:"langMissing,omitempty"`
 	File          *fileMeta `json:"file,omitempty"`
 	LastSearched  string    `json:"lastSearched,omitempty"`
 }
@@ -124,7 +125,8 @@ func (h *Handler) getSeries(w http.ResponseWriter, r *http.Request) {
 		bySeason[e.SeasonNumber] = append(bySeason[e.SeasonNumber], episodeDTO{
 			ID: e.ID, SeasonNumber: e.SeasonNumber, EpisodeNumber: e.EpisodeNumber, Title: e.Title,
 			AirDate: e.AirDate, Status: string(e.Status), Monitored: e.Monitored, HasFile: e.HasFile,
-			File: fileMetaFor(targets, e.LibraryPath), LastSearched: rfc3339ptr(e.LastSearchedAt),
+			LangMissing: e.LangMissing,
+			File:        fileMetaFor(targets, e.LibraryPath), LastSearched: rfc3339ptr(e.LastSearchedAt),
 		})
 	}
 	dto := seriesDTO{
