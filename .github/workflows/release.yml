@@ -73,8 +73,11 @@ jobs:
             VERSION=${{ steps.ver.outputs.value }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # No type=gha cache: mode=max exports every builder-stage layer for both
+          # amd64 + arm64 (QEMU), which is slower to export than the ~8m build it
+          # was meant to speed up, and the distroless final image caches poorly.
+          # Build speed comes from the build itself; hangs are bounded by the job
+          # timeout + concurrency below.
           provenance: false
       - name: github release
         if: startsWith(github.ref, 'refs/tags/v')
