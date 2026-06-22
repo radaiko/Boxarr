@@ -53,6 +53,11 @@ func (w *Workers) DeleteDownloads(ctx context.Context, jobIDs []int64, report fu
 					_ = removeLibrarySymlink(s.SymlinkPath)
 				}
 			}
+			// Tombstone the mount folder so the reconciler doesn't re-add it as
+			// "unknown" while the rclone listing still shows the deleted download.
+			if j.StoragePath != "" {
+				_ = w.store.AddDeletedPath(ctx, j.StoragePath)
+			}
 			if e := w.store.DeleteJob(ctx, id); e != nil {
 				w.logger.Warn("delete download: dropping job row", "job_id", id, "error", e)
 			}
@@ -128,6 +133,8 @@ func (w *Workers) deleteJob(ctx context.Context, j *job.Job) {
 		if err := removeSymlinkDir(w.set.SymlinkRoot(), j.StoragePath); err != nil {
 			log.Debug("removing symlink-farm directory", "dir", j.StoragePath, "error", err)
 		}
+		// Tombstone so the reconciler doesn't re-add the deleted folder as unknown.
+		_ = w.store.AddDeletedPath(ctx, j.StoragePath)
 	}
 	w.notifyEvent(ctx, "deletion_completed", j, nil)
 	if err := w.store.DeleteJob(ctx, j.ID); err != nil {
