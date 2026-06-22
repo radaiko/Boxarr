@@ -3,6 +3,7 @@ package settings
 import (
 	"strconv"
 	"strings"
+	"time"
 )
 
 // secretKeys are never returned in cleartext by the settings API.
@@ -78,13 +79,20 @@ func (s *Store) EffectiveNonSecret() map[string]string {
 		KeyWebDAVMountRoot:      s.WebDAVMountRoot(),
 		KeyWebDAVUsenetSubpath:  s.WebDAVUsenetSubpath(),
 		KeyWebDAVTorrentSubpath: s.WebDAVTorrentSubpath(),
-		KeyReconcileInterval:    s.ReconcileInterval().String(),
-		KeyMetadataInterval:     s.MetadataInterval().String(),
-		KeySearchInterval:       s.SearchInterval().String(),
-		KeyPollInterval:         s.PollInterval().String(),
+		KeyReconcileInterval:    prettyDur(s.ReconcileInterval()),
+		KeyMetadataInterval:     prettyDur(s.MetadataInterval()),
+		KeySearchInterval:       prettyDur(s.SearchInterval()),
+		KeyPollInterval:         prettyDur(s.PollInterval()),
 		KeyWebDAVRefreshURL:     s.TorBoxWebDAVRefreshURL(),
 		KeyWebDAVUser:           s.TorBoxWebDAVUser(),
 		KeyAutomationEnabled:    boolStr(s.AutomationEnabled()),
+		KeyUpgradeEnabled:       boolStr(s.UpgradeEnabled()),
+		KeyPlexAutoLanguage:     boolStr(s.PlexAutoLanguageEnabled()),
+		KeyCadenceFastWindow:    prettyDur(s.CadenceFastWindow()),
+		KeyCadenceFastInterval:  prettyDur(s.CadenceFastInterval()),
+		KeyCadenceDailyWindow:   prettyDur(s.CadenceDailyWindow()),
+		KeyCadenceDailyInterval: prettyDur(s.CadenceDailyInterval()),
+		KeyCadenceSlowInterval:  prettyDur(s.CadenceSlowInterval()),
 		KeyMaxActiveDownloads:   itoa(s.MaxActiveDownloads()),
 		KeyMaxCreatePerHour:     itoa(s.MaxCreatePerHour()),
 		KeyMaxTorrentPerMin:     itoa(s.MaxTorrentPerMin()),
@@ -154,3 +162,16 @@ func boolStr(b bool) string {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// prettyDur trims a Go duration's trailing zero units for display ("48h0m0s" →
+// "48h", "1m0s" → "1m"); the result still parses with time.ParseDuration.
+func prettyDur(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
+}
