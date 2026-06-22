@@ -80,7 +80,7 @@ func (s *Service) tryUpgradeMovie(ctx context.Context, m *media.Movie, now time.
 	if err != nil {
 		return
 	}
-	if best, ok := s.pickBest(results, "movie"); ok && s.isUpgrade(cfg, ideal, cur.NZBName, best.Title) {
+	if best, ok := s.pickBest(ctx, results, "movie"); ok && s.isUpgrade(cfg, ideal, cur.NZBName, best.Title) {
 		_, _ = s.grabBest(ctx, best, "movie", m.ID, true)
 	}
 }
@@ -107,7 +107,7 @@ func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *m
 	if err != nil {
 		return
 	}
-	if best, ok := s.pickBest(results, kind); ok && s.isUpgrade(cfg, ideal, cur.NZBName, best.Title) {
+	if best, ok := s.pickBest(ctx, results, kind); ok && s.isUpgrade(cfg, ideal, cur.NZBName, best.Title) {
 		_, _ = s.grabBest(ctx, best, "episode", ep.ID, true)
 	}
 }

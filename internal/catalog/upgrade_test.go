@@ -1,6 +1,9 @@
 package catalog
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestLanguageSatisfied(t *testing.T) {
 	deOnly := []string{"DE"}
@@ -25,5 +28,29 @@ func TestLanguageSatisfied(t *testing.T) {
 	// No goal configured → nothing to upgrade toward.
 	if !languageSatisfied("whatever.1080p", nil, false) {
 		t.Error("no goal → satisfied")
+	}
+}
+
+func TestVerifiedLacksLang(t *testing.T) {
+	cat, st, _ := newCatalog(t, selCfg())
+	ctx := context.Background()
+	_ = st.UpsertReleaseLang(ctx, "Show.S01E01.German.DL-LIAR", "liar", []string{"en"}, nil, "plex")
+	_ = st.UpsertReleaseLang(ctx, "Show.S01E01.German.DL-REAL", "real", []string{"de", "en"}, nil, "plex")
+
+	// Recorded but no German (name lied) → lacking for a DE goal.
+	if !cat.verifiedLacksLang(ctx, "Show.S01E01.German.DL-LIAR", []string{"DE"}, false) {
+		t.Error("LIAR has no German → should be verified-lacking")
+	}
+	// Recorded with German → not lacking.
+	if cat.verifiedLacksLang(ctx, "Show.S01E01.German.DL-REAL", []string{"DE"}, false) {
+		t.Error("REAL has German → should not be lacking")
+	}
+	// Never recorded → never skipped.
+	if cat.verifiedLacksLang(ctx, "Unknown.Release", []string{"DE"}, false) {
+		t.Error("unrecorded release must not be treated as lacking")
+	}
+	// requireAny (anime DE or EN): English present satisfies.
+	if cat.verifiedLacksLang(ctx, "Show.S01E01.German.DL-LIAR", []string{"DE", "EN"}, true) {
+		t.Error("English present satisfies requireAny [DE,EN]")
 	}
 }

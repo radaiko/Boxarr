@@ -75,7 +75,7 @@ func (s *Service) forceSearchMovie(ctx context.Context, m *media.Movie, rep func
 		rep("%s — search error: %v", m.Title, err)
 		return false
 	}
-	best, ok := s.pickBest(results, "movie")
+	best, ok := s.pickBest(ctx, results, "movie")
 	if !ok {
 		rep("%s — no acceptable release (%d candidates)", m.Title, len(results))
 		return false
@@ -106,7 +106,7 @@ func (s *Service) forceSearchEpisode(ctx context.Context, sr *media.Series, ep *
 		rep("%s — search error: %v", label, err)
 		return false
 	}
-	best, ok := s.pickBest(results, kind)
+	best, ok := s.pickBest(ctx, results, kind)
 	if !ok {
 		rep("%s — no acceptable release (%d candidates)", label, len(results))
 		return false

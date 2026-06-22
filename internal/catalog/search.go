@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -62,7 +63,7 @@ func (s *Service) SearchWantedForMovie(ctx context.Context, movieID int64) error
 	if err != nil {
 		return err
 	}
-	best, ok := s.pickBest(results, "movie")
+	best, ok := s.pickBest(ctx, results, "movie")
 	if !ok {
 		return nil // nothing acceptable; stays wanted
 	}
@@ -114,7 +115,7 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 			s.logSearchErr(q, serr)
 			continue
 		}
-		best, ok := s.pickBest(results, kind)
+		best, ok := s.pickBest(ctx, results, kind)
 		if !ok {
 			continue
 		}
@@ -170,27 +171,69 @@ func searchDue(releaseDate string, last *time.Time, now time.Time, cad cadence) 
 }
 
 // pickBest scores results with the configured selection score and returns the
-// best non-rejected release.
-func (s *Service) pickBest(results []prowlarr.ReleaseResource, kind string) (prowlarr.ReleaseResource, bool) {
+// best non-rejected release — skipping, in score order, any release the language
+// knowledge base has already verified to lack the wanted language (so re-searches
+// work *down* from the top instead of re-grabbing a name-lies-about-German
+// release). If every candidate is known-bad it still returns the top one.
+func (s *Service) pickBest(ctx context.Context, results []prowlarr.ReleaseResource, kind string) (prowlarr.ReleaseResource, bool) {
 	cfg := s.set.SelectionConfigFor(kind)
-	bestIdx, bestScore := -1, 0
-	for i, rr := range results {
-		rel := selection.Release{
+	ideal := idealLangs(cfg)
+	type cand struct {
+		rr prowlarr.ReleaseResource
+		sc int
+	}
+	var cands []cand
+	for _, rr := range results {
+		sc := cfg.Score(selection.Release{
 			Title: rr.Title, Protocol: rr.Protocol, Size: rr.Size,
 			Seeders: rr.Seeders, Grabs: rr.Grabs, IndexerFlags: rr.IndexerFlags,
-		}
-		sc := cfg.Score(rel)
+		})
 		if sc < cfg.MinScore {
 			continue
 		}
-		if bestIdx == -1 || sc > bestScore {
-			bestIdx, bestScore = i, sc
-		}
+		cands = append(cands, cand{rr, sc})
 	}
-	if bestIdx == -1 {
+	if len(cands) == 0 {
 		return prowlarr.ReleaseResource{}, false
 	}
-	return results[bestIdx], true
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].sc > cands[j].sc })
+	for _, c := range cands {
+		if !s.verifiedLacksLang(ctx, c.rr.Title, ideal, cfg.RequireAnyLanguage) {
+			return c.rr, true
+		}
+	}
+	return cands[0].rr, true // all known-bad — fall back to the highest score
+}
+
+// verifiedLacksLang reports whether the KB has recorded this release's real
+// languages and they don't include the wanted language (the top preferred, or any
+// preferred when requireAny). Unrecorded releases are never skipped.
+func (s *Service) verifiedLacksLang(ctx context.Context, name string, ideal []string, requireAny bool) bool {
+	if len(ideal) == 0 {
+		return false
+	}
+	rl, _ := s.store.GetReleaseLang(ctx, name)
+	if rl == nil {
+		return false
+	}
+	have := rl.AudioLangs + "," + rl.SubLangs
+	has := func(code string) bool {
+		for _, l := range strings.Split(have, ",") {
+			if strings.EqualFold(strings.TrimSpace(l), code) {
+				return true
+			}
+		}
+		return false
+	}
+	if requireAny {
+		for _, code := range ideal {
+			if has(code) {
+				return false
+			}
+		}
+		return true
+	}
+	return !has(ideal[0])
 }
 
 // grabBest stores the chosen release's artifact, dedups, and creates a pending job.
