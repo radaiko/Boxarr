@@ -295,6 +295,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 /* ── Dashboard ── */
 .dash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.lang-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 16px; }
+.meta-chip.lang.de { color: var(--accent); border-color: #5a4015; background: #241a08; }
 .dash-stat { text-align: left; cursor: pointer; border: 1px solid var(--border); font: inherit; }
 .dash-stat:hover { border-color: var(--accent); }
 .dash-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 18px; }
