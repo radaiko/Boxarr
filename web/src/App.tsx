@@ -99,7 +99,7 @@ export function App() {
           {view === 'Anime' && <Series anime openId={openFor('Anime')?.id} openSeq={openFor('Anime')?.seq} />}
           {view === 'TorBox' && <TorBox onOpenCatalog={openCatalog} />}
           {view === 'Activity' && <Activity />}
-          {view === 'Notifications' && <Notifications />}
+          {view === 'Notifications' && <Notifications onOpenCatalog={openCatalog} />}
           {view === 'Settings' && <Settings />}
         </main>
       </div>

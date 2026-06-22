@@ -51,7 +51,7 @@ func (w *Workers) plexLanguageOnce(ctx context.Context) error {
 					continue
 				}
 				if it, ok := byTitle[strings.ToLower(m.Title)]; ok {
-					w.applyPlexLanguage(ctx, "movie", it.RatingKey, m.Title)
+					w.applyPlexLanguage(ctx, "movie", it.RatingKey, m.ID, m.Title)
 				}
 			}
 		} else {
@@ -123,7 +123,7 @@ func (w *Workers) plexLanguageOnce(ctx context.Context) error {
 				continue
 			}
 			if it, ok := bySE[[2]int{ep.SeasonNumber, ep.EpisodeNumber}]; ok {
-				w.applyPlexLanguage(ctx, kind, it.RatingKey,
+				w.applyPlexLanguage(ctx, kind, it.RatingKey, sr.ID,
 					fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber))
 			}
 		}
@@ -133,7 +133,7 @@ func (w *Workers) plexLanguageOnce(ctx context.Context) error {
 
 // applyPlexLanguage reads an item's streams, picks the right defaults, and (only
 // when they differ) sets them; raises a notification when the language is missing.
-func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey, label string) {
+func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey string, catalogID int64, label string) {
 	partID, audio, subs, err := w.plex.ItemStreams(ctx, ratingKey)
 	if err != nil {
 		w.logger.Debug("plex language: streams", "item", label, "error", err)
@@ -146,7 +146,9 @@ func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey, label 
 	}
 	wantA, wantS, missing := plex.PickStreams(preferred, cfg.RequireAnyLanguage, audio, subs)
 	if missing {
-		w.notifyLanguageMissing(ctx, label)
+		detail := fmt.Sprintf("wanted %s — available audio: %s; subtitles: %s",
+			strings.Join(preferred, " / "), streamLangs(audio), streamLangs(subs))
+		w.notifyLanguageMissing(ctx, kind, catalogID, label, detail)
 	}
 	curA, curS := plex.CurrentSelection(audio, subs)
 	if (wantA == 0 || wantA == curA) && wantS == curS {
@@ -163,7 +165,30 @@ func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey, label 
 	w.logger.Info("plex language set", "item", label, "audio_stream", audioToSet, "subtitle_stream", wantS)
 }
 
-func (w *Workers) notifyLanguageMissing(ctx context.Context, label string) {
+// streamLangs lists the distinct languages present in a set of streams.
+func streamLangs(ss []plex.Stream) string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range ss {
+		l := s.LanguageCode
+		if l == "" {
+			l = s.Language
+		}
+		if l == "" {
+			l = "?"
+		}
+		if !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	if len(out) == 0 {
+		return "none"
+	}
+	return strings.Join(out, ", ")
+}
+
+func (w *Workers) notifyLanguageMissing(ctx context.Context, kind string, catalogID int64, label, detail string) {
 	existing, _ := w.store.ListNotifications(ctx, false, 500)
 	for _, n := range existing {
 		if n.Type == "language_missing" && containsName(n.Payload, label) {
@@ -171,7 +196,9 @@ func (w *Workers) notifyLanguageMissing(ctx context.Context, label string) {
 		}
 	}
 	payload, _ := json.Marshal(map[string]any{
-		"item": label, "message": "No German/English audio or subtitles available for " + label,
+		"item": label, "message": detail,
+		"kind": kind, "catalogId": catalogID, // lets the UI jump to the item
+		"actions": []string{"open"},
 	})
 	if _, err := w.store.EnqueueNotification(ctx, &notify.Notification{
 		Type: "language_missing", Payload: string(payload),

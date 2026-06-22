@@ -10,9 +10,18 @@ interface Note {
   payload: Record<string, unknown>
 }
 
-export function Notifications() {
+export function Notifications({ onOpenCatalog }: { onOpenCatalog?: (kind: string, id: number) => void }) {
   const [notes, setNotes] = useState<Note[] | null>(null)
   const [err, setErr] = useState('')
+
+  // jumpTarget returns a navigation closure when a notification points at a
+  // catalog item (e.g. language_missing), else undefined.
+  function jumpTarget(n: Note): (() => void) | undefined {
+    const id = Number(n.payload.catalogId)
+    const kind = typeof n.payload.kind === 'string' ? n.payload.kind : ''
+    if (onOpenCatalog && id > 0 && kind) return () => onOpenCatalog(kind, id)
+    return undefined
+  }
 
   function reload() {
     getJSON<{ items: Note[] }>('/notifications').then((r) => setNotes(r.items)).catch((e: unknown) => setErr(String(e)))
@@ -42,23 +51,29 @@ export function Notifications() {
         <Empty icon="notifications" title="All clear" hint="Grabs, imports, failures, and unknown content on the mount show up here." />
       ) : (
         <div className="note-list">
-          {notes.map((n) => (
-            <div key={n.id} className={`note${n.read ? '' : ' unread'}`}>
-              <span className={`status ${noteTone(n.type)}`}>{n.type.replace(/_/g, ' ')}</span>
-              <span className="note-summary">{summarize(n)}</span>
-              <span className="note-time">{ago(n.createdAt)}</span>
-              <span className="note-actions">
-                {n.type === 'unknown_content' && !n.read && (
-                  <>
-                    <button className="btn btn-sm btn-primary" onClick={() => void act(n.id, 'adopt')}>Adopt to library</button>
-                    <button className="btn btn-sm" onClick={() => void act(n.id, 'ignore')}>Keep</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => void act(n.id, 'delete')}>Delete from TorBox</button>
-                  </>
-                )}
-                {!n.read && <button className="btn btn-sm btn-ghost" onClick={() => void markRead(n.id)}><Icon name="check" /></button>}
-              </span>
-            </div>
-          ))}
+          {notes.map((n) => {
+            const target = jumpTarget(n)
+            return (
+              <div key={n.id} className={`note${n.read ? '' : ' unread'}${target ? ' clickable' : ''}`}
+                onClick={target ? () => target() : undefined}
+                title={target ? 'Open in library' : undefined}>
+                <span className={`status ${noteTone(n.type)}`}>{n.type.replace(/_/g, ' ')}</span>
+                <span className="note-summary">{summarize(n)}</span>
+                <span className="note-time">{ago(n.createdAt)}</span>
+                <span className="note-actions" onClick={(e) => e.stopPropagation()}>
+                  {n.type === 'unknown_content' && !n.read && (
+                    <>
+                      <button className="btn btn-sm btn-primary" onClick={() => void act(n.id, 'adopt')}>Adopt to library</button>
+                      <button className="btn btn-sm" onClick={() => void act(n.id, 'ignore')}>Keep</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => void act(n.id, 'delete')}>Delete from TorBox</button>
+                    </>
+                  )}
+                  {target && <button className="btn btn-sm" onClick={() => target()}><Icon name="series" /> Open</button>}
+                  {!n.read && <button className="btn btn-sm btn-ghost" onClick={() => void markRead(n.id)}><Icon name="check" /></button>}
+                </span>
+              </div>
+            )
+          })}
         </div>
       )}
     </section>
