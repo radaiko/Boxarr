@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -85,6 +86,16 @@ type Workers struct {
 	// healLastRun is the Unix-nanos timestamp of the last healOnce run,
 	// read by the /health/symlinks endpoint. Atomic for cross-goroutine reads.
 	healLastRun atomic.Int64
+
+	// loopRuns records each background loop's last run + interval, for the
+	// dashboard "running now / up next" schedule. Guarded by loopMu.
+	loopMu   sync.Mutex
+	loopRuns map[string]loopState
+}
+
+type loopState struct {
+	last     time.Time
+	interval time.Duration
 }
 
 // New constructs a Workers.
@@ -98,6 +109,7 @@ func New(st *store.Store, tb TorBoxAPI, set *settings.Store, logger *slog.Logger
 		torrentMissingPolls: map[int64]int{},
 		deleteAttempts:      map[int64]int{},
 		httpClient:          &http.Client{Timeout: 30 * time.Second},
+		loopRuns:            map[string]loopState{},
 	}
 }
 
@@ -161,6 +173,36 @@ func (w *Workers) HealRunInfo() (last, next time.Time) {
 	return last, last.Add(w.set.HealInterval())
 }
 
+// loopLabels gives the background loops friendly names for the dashboard.
+var loopLabels = map[string]string{
+	"poller": "TorBox poll", "torrent-poller": "Torrent poll", "submitter": "Submit to TorBox",
+	"torrent-submitter": "Submit torrents", "deleter": "Process deletions", "reaper": "Reaper",
+	"reconciler": "Reconcile mount", "plex-language": "Plex language sweep",
+	"healer": "Heal broken links", "heal-reconciler": "Heal reconcile",
+	"metadata-refresh": "Metadata refresh", "auto-search": "Auto-search + upgrade",
+}
+
+// LoopSchedule returns each background loop's last/next run for the dashboard,
+// soonest-next first. Loops that haven't run yet are omitted.
+func (w *Workers) LoopSchedule() []map[string]any {
+	w.loopMu.Lock()
+	defer w.loopMu.Unlock()
+	out := make([]map[string]any, 0, len(w.loopRuns))
+	for name, st := range w.loopRuns {
+		label := loopLabels[name]
+		if label == "" {
+			label = name
+		}
+		out = append(out, map[string]any{
+			"name": label, "everySeconds": int(st.interval.Seconds()),
+			"lastRun": st.last.UTC().Format(time.RFC3339),
+			"nextRun": st.last.Add(st.interval).UTC().Format(time.RFC3339),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i]["nextRun"].(string) < out[j]["nextRun"].(string) })
+	return out
+}
+
 // loop runs fn immediately, then every interval, until ctx is cancelled.
 func (w *Workers) loop(ctx context.Context, name string, interval time.Duration, fn func(context.Context) error) {
 	if interval <= 0 {
@@ -172,6 +214,9 @@ func (w *Workers) loop(ctx context.Context, name string, interval time.Duration,
 		if err := fn(ctx); err != nil && ctx.Err() == nil {
 			w.logger.Error("worker iteration failed", "worker", name, "error", err)
 		}
+		w.loopMu.Lock()
+		w.loopRuns[name] = loopState{last: time.Now(), interval: interval}
+		w.loopMu.Unlock()
 		select {
 		case <-ctx.Done():
 			w.logger.Info("worker stopped", "worker", name)

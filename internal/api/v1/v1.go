@@ -53,6 +53,11 @@ type PlexLanguager interface {
 	PlexLanguageSweep(ctx context.Context) error
 }
 
+// Scheduler reports the background loops' last/next run for the dashboard.
+type Scheduler interface {
+	LoopSchedule() []map[string]any
+}
+
 // Deps are the dependencies the /api/v1 handler needs.
 type Deps struct {
 	Store      *store.Store
@@ -64,6 +69,7 @@ type Deps struct {
 	Deleter    Deleter
 	Converter  SeriesConverter
 	PlexLang   PlexLanguager // runs the Plex auto-language sweep on demand (optional)
+	Scheduler  Scheduler     // background-loop schedule for the dashboard (optional)
 	Tasks      *task.Manager // background runner for adopt/delete (nil = run inline)
 	Logger     *slog.Logger
 	Version    string

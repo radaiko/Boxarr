@@ -16,7 +16,9 @@ interface StorageResp {
 }
 interface Download { id: number; name: string; state: string; mediaType: string; progress: number; protocol: string }
 interface HistoryItem { id: number; name: string; state: string; createdAt: string }
-interface ActivityResp { downloads: Download[]; history: HistoryItem[] }
+interface BgTask { id: number; type: string; label: string; state: string; current?: number; total?: number }
+interface ScheduleItem { name: string; everySeconds: number; lastRun: string; nextRun: string }
+interface ActivityResp { downloads: Download[]; history: HistoryItem[]; tasks?: BgTask[]; schedule?: ScheduleItem[] }
 interface Note { id: number; type: string; read: boolean; createdAt: string; payload: Record<string, unknown> }
 
 type Nav = (view: string) => void
@@ -48,6 +50,8 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
   const downloading = queue.filter((d) => d.state === 'downloading')
   const attention = notes.filter((n) => !n.read)
   const missing = (c.missingMovies ?? 0) + (c.missingEpisodes ?? 0)
+  const runningTasks = (activity?.tasks ?? []).filter((t) => t.state === 'running')
+  const schedule = activity?.schedule ?? []
 
   async function run(path: string, what: string) {
     try { await postJSON(path, {}); toast(`${what} started — see Activity.`, 'ok') }
@@ -130,8 +134,62 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
           )}
         </Panel>
       </div>
+
+      <div className="dash-cols">
+        <Panel title="Running now" icon="refresh" count={runningTasks.length + downloading.length} onMore={() => onNavigate('Activity')}>
+          {runningTasks.length === 0 && downloading.length === 0 ? (
+            <p className="dash-empty">Idle — no background work running.</p>
+          ) : (
+            <>
+              {runningTasks.map((t) => (
+                <div key={`t${t.id}`} className="dash-row">
+                  <span className="status searching" style={{ textTransform: 'capitalize' }}>{t.type}</span>
+                  <span className="dash-row-main" title={t.label}>{t.label}</span>
+                  {(t.total ?? 0) > 0 && <span className="dash-pct">{t.current}/{t.total}</span>}
+                </div>
+              ))}
+              {downloading.length > 0 && (
+                <div className="dash-row">
+                  <span className="status downloading">downloads</span>
+                  <span className="dash-row-main">{downloading.length} downloading on TorBox</span>
+                </div>
+              )}
+            </>
+          )}
+        </Panel>
+
+        <Panel title="Up next" icon="refresh" count={schedule.length} onMore={() => onNavigate('Activity')}>
+          {schedule.length === 0 ? (
+            <p className="dash-empty">No scheduled tasks yet.</p>
+          ) : (
+            schedule.slice(0, 8).map((s) => (
+              <div key={s.name} className="dash-row">
+                <span className="dash-row-main">{s.name}</span>
+                <span className="muted dash-row-time" title={`every ${fmtEvery(s.everySeconds)}`}>{until(s.nextRun)}</span>
+              </div>
+            ))
+          )}
+        </Panel>
+      </div>
     </section>
   )
+}
+
+// until formats a future ISO timestamp as "in 5m" / "due now".
+function until(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now()
+  if (ms <= 0) return 'due now'
+  const m = Math.round(ms / 60000)
+  if (m < 60) return `in ${m}m`
+  const h = Math.round(m / 60)
+  if (h < 24) return `in ${h}h`
+  return `in ${Math.round(h / 24)}d`
+}
+
+function fmtEvery(sec: number): string {
+  if (sec < 3600) return `${Math.round(sec / 60)}m`
+  if (sec < 86400) return `${Math.round(sec / 3600)}h`
+  return `${Math.round(sec / 86400)}d`
 }
 
 function StatCard({ label, value, sub, onClick }: { label: string; value: string; sub?: string; onClick?: () => void }) {

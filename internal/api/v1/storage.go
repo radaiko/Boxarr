@@ -440,7 +440,11 @@ func (h *Handler) activity(w http.ResponseWriter, r *http.Request) {
 			"error": j.FailMessage, "release": parseReleaseMeta(j.NZBName),
 		})
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"downloads": downloads, "tasks": tasks, "history": history})
+	schedule := []map[string]any{}
+	if h.deps.Scheduler != nil {
+		schedule = h.deps.Scheduler.LoopSchedule()
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"downloads": downloads, "tasks": tasks, "history": history, "schedule": schedule})
 }
 
 type catalogEntry struct {
