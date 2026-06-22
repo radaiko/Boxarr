@@ -294,6 +294,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .note.clickable:hover { border-color: var(--accent); background: var(--surface-2); }
 
 /* ── Dashboard ── */
+.dash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .dash-stat { text-align: left; cursor: pointer; border: 1px solid var(--border); font: inherit; }
 .dash-stat:hover { border-color: var(--accent); }
 .dash-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 18px; }

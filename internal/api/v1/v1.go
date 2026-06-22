@@ -93,6 +93,8 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/plex/library-check", h.plexLibraryCheck)
 	r.Post("/plex/language-sweep", h.triggerPlexLanguage)
 	r.Post("/upgrade/search", h.triggerUpgradeSearch)
+	r.Post("/search/missing", h.triggerSearchMissing)
+	r.Post("/library/refresh", h.triggerLibraryRefresh)
 	r.Get("/movies", h.listMovies)
 	r.Get("/movies/lookup", h.lookupMovies)
 	r.Get("/movies/{id}", h.getMovie)
@@ -164,6 +166,14 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 			anime++
 		}
 	}
+	// Missing = monitored + released/aired but no file (the acquisition backlog).
+	missingMovies := 0
+	for _, m := range movies {
+		if m.Monitored && !m.HasFile {
+			missingMovies++
+		}
+	}
+	wantedEps, _ := h.deps.Store.WantedEpisodes(ctx)
 	resp := map[string]any{
 		"version": h.deps.Version,
 		"counts": map[string]any{
@@ -172,6 +182,8 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 			"movies":              len(movies),
 			"activeJobs":          active,
 			"unreadNotifications": unread,
+			"missingMovies":       missingMovies,
+			"missingEpisodes":     len(wantedEps),
 		},
 	}
 	if h.deps.Health != nil {

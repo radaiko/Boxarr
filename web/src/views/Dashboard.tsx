@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getJSON } from '../api'
+import { getJSON, postJSON } from '../api'
 import { Icon, Loading, gb, ago } from '../ui'
+import { toast } from '../toast'
 
-interface Counts { movies: number; series: number; anime: number; activeJobs: number; unreadNotifications: number }
+interface Counts {
+  movies: number; series: number; anime: number; activeJobs: number; unreadNotifications: number
+  missingMovies?: number; missingEpisodes?: number
+}
 interface StatusResp { version: string; counts: Counts }
 interface StorageResp {
   usedBytes: number
@@ -43,9 +47,26 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
   const queue = activity?.downloads ?? []
   const downloading = queue.filter((d) => d.state === 'downloading')
   const attention = notes.filter((n) => !n.read)
+  const missing = (c.missingMovies ?? 0) + (c.missingEpisodes ?? 0)
+
+  async function run(path: string, what: string) {
+    try { await postJSON(path, {}); toast(`${what} started — see Activity.`, 'ok') }
+    catch (e) { toast(`${what} failed: ${String(e)}`, 'err') }
+  }
 
   return (
     <section className="dash">
+      <div className="dash-actions">
+        <button className="btn btn-sm btn-primary" onClick={() => void run('/search/missing', 'Search all missing')}>
+          <Icon name="search" /> Search all missing
+        </button>
+        <button className="btn btn-sm" onClick={() => void run('/library/refresh', 'Library refresh')}>
+          <Icon name="refresh" /> Refresh from TorBox + Plex
+        </button>
+        <button className="btn btn-sm" onClick={() => void run('/upgrade/search', 'Upgrade search')}>
+          <Icon name="refresh" /> Search upgrades
+        </button>
+      </div>
       <div className="stat-grid">
         <StatCard label="Library" value={`${c.movies + c.series + c.anime}`}
           sub={`${c.movies} movies · ${c.series} series · ${c.anime} anime`} onClick={() => onNavigate('Movies')} />
@@ -57,6 +78,9 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
         <StatCard label="Grabs today" value={`${storage?.limits?.usedToday ?? 0}`}
           sub={storage?.limits && storage.limits.dailyCap > 0 ? `cap ${storage.limits.dailyCap}` : 'no cap'}
           onClick={() => onNavigate('TorBox')} />
+        <StatCard label="Missing" value={`${missing}`}
+          sub={`${c.missingMovies ?? 0} movies · ${c.missingEpisodes ?? 0} episodes`}
+          onClick={() => onNavigate('Movies')} />
       </div>
 
       <div className="dash-cols">
