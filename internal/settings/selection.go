@@ -1,6 +1,10 @@
 package settings
 
-import "github.com/radaiko/boxarr/internal/selection"
+import (
+	"context"
+
+	"github.com/radaiko/boxarr/internal/selection"
+)
 
 // Selection-score setting keys (FR-SR-5). These make every selection knob
 // DB-overridable from the UI; SelectionConfig overlays them on the env/default
@@ -117,5 +121,19 @@ func (s *Store) SelectionConfigFor(kind string) selection.Config {
 		cfg.RequireAnyLanguage = s.boolv(KeySelectAnimeRequireAny, s.seed.SelectAnimeRequireAny)
 		cfg.PreferEnglishSubs = s.boolv(KeySelectAnimePreferSubs, s.seed.SelectAnimePreferSubs)
 	}
+	// Learned group tendencies: groups verified to ship the top preferred language
+	// (from the release-language knowledge base) get a likelihood bonus in scoring.
+	if top := topLang(cfg.PreferredLanguages); top != "" {
+		if groups, err := s.db.GroupsProvidingLanguage(context.Background(), top); err == nil && len(groups) > 0 {
+			cfg.LikelyLanguageGroups = groups
+		}
+	}
 	return cfg
+}
+
+func topLang(langs []string) string {
+	if len(langs) == 0 {
+		return ""
+	}
+	return langs[0]
 }

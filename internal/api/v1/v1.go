@@ -95,6 +95,7 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/upgrade/search", h.triggerUpgradeSearch)
 	r.Post("/search/missing", h.triggerSearchMissing)
 	r.Post("/library/refresh", h.triggerLibraryRefresh)
+	r.Get("/releases/languages", h.releaseLanguages)
 	r.Get("/movies", h.listMovies)
 	r.Get("/movies/lookup", h.lookupMovies)
 	r.Get("/movies/{id}", h.getMovie)

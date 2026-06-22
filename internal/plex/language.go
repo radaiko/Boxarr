@@ -35,6 +35,47 @@ func langMatch(s Stream, want string) bool {
 	return code == want || strings.HasPrefix(code, want) || strings.Contains(name, want)
 }
 
+// threeToTwo maps common 3-letter language codes to 2-letter for the knowledge base.
+var threeToTwo = map[string]string{
+	"deu": "de", "ger": "de", "eng": "en", "jpn": "ja", "jap": "ja",
+	"fre": "fr", "fra": "fr", "spa": "es", "ita": "it", "rus": "ru",
+	"kor": "ko", "chi": "zh", "zho": "zh", "por": "pt", "nld": "nl", "dut": "nl",
+}
+
+// normCode normalizes a stream's language to a 2-letter code.
+func normCode(s Stream) string {
+	if langMatch(s, "de") {
+		return "de"
+	}
+	if langMatch(s, "en") {
+		return "en"
+	}
+	c := strings.ToLower(strings.TrimSpace(s.LanguageCode))
+	if c == "" {
+		c = strings.ToLower(strings.TrimSpace(s.Language))
+	}
+	if v, ok := threeToTwo[c]; ok {
+		return v
+	}
+	if len(c) >= 2 {
+		return c[:2]
+	}
+	return c
+}
+
+// StreamLangCodes returns the distinct normalized 2-letter languages of a stream set.
+func StreamLangCodes(ss []Stream) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range ss {
+		if c := normCode(s); c != "" && !seen[c] {
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // firstPreferred returns the id of the first stream whose language is highest in
 // the preferred order (so preferred[0] wins over preferred[1]); 0 if none match.
 func firstPreferred(ss []Stream, preferred []string) int {

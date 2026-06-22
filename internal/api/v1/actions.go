@@ -70,6 +70,17 @@ func (h *Handler) triggerLibraryRefresh(w http.ResponseWriter, r *http.Request) 
 	h.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 }
 
+// releaseLanguages returns the verified release→language knowledge base (the real
+// audio/subtitle languages observed after download), for display + export.
+func (h *Handler) releaseLanguages(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.deps.Store.ListReleaseLangs(r.Context(), 1000)
+	if err != nil {
+		h.serverError(w, "listing release languages", err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"items": rows, "total": len(rows)})
+}
+
 // runBackground runs fn on the task manager (so it survives the request), or
 // inline in a goroutine when no task manager is wired.
 func (h *Handler) runBackground(typ, label string, fn func(context.Context) error) {

@@ -8,7 +8,20 @@ import (
 
 	"github.com/radaiko/boxarr/internal/notify"
 	"github.com/radaiko/boxarr/internal/plex"
+	"github.com/radaiko/boxarr/internal/release"
 )
+
+// releaseNameForJob returns the NZB/release name of a linked job (for the
+// language knowledge base), or "" if there's no job.
+func (w *Workers) releaseNameForJob(ctx context.Context, jobID int64) string {
+	if jobID == 0 {
+		return ""
+	}
+	if j, err := w.store.GetJob(ctx, jobID); err == nil && j != nil {
+		return j.NZBName
+	}
+	return ""
+}
 
 // PlexLanguageSweep runs one Plex auto-language pass on demand (manual button) —
 // it bypasses the auto-sweep toggle.
@@ -52,7 +65,7 @@ func (w *Workers) plexLanguageOnce(ctx context.Context) error {
 				}
 				if it, ok := byTitle[strings.ToLower(m.Title)]; ok {
 					mid := m.ID
-					w.applyPlexLanguage(ctx, "movie", it.RatingKey, mid, m.Title,
+					w.applyPlexLanguage(ctx, "movie", it.RatingKey, mid, m.Title, w.releaseNameForJob(ctx, m.JobID),
 						func(miss bool) { _ = w.store.SetMovieLangMissing(ctx, mid, miss) })
 				}
 			}
@@ -128,6 +141,7 @@ func (w *Workers) plexLanguageOnce(ctx context.Context) error {
 				eid := ep.ID
 				w.applyPlexLanguage(ctx, kind, it.RatingKey, sr.ID,
 					fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber),
+					w.releaseNameForJob(ctx, ep.JobID),
 					func(miss bool) { _ = w.store.SetEpisodeLangMissing(ctx, eid, miss) })
 			}
 		}
@@ -137,7 +151,7 @@ func (w *Workers) plexLanguageOnce(ctx context.Context) error {
 
 // applyPlexLanguage reads an item's streams, picks the right defaults, and (only
 // when they differ) sets them; raises a notification when the language is missing.
-func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey string, navID int64, label string, setMissing func(bool)) {
+func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey string, navID int64, label, releaseName string, setMissing func(bool)) {
 	partID, audio, subs, err := w.plex.ItemStreams(ctx, ratingKey)
 	if err != nil {
 		w.logger.Debug("plex language: streams", "item", label, "error", err)
@@ -151,6 +165,17 @@ func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey string,
 	wantA, wantS, missing := plex.PickStreams(preferred, cfg.RequireAnyLanguage, audio, subs)
 	if setMissing != nil {
 		setMissing(missing) // drives the in-list marker + re-search
+	}
+	// Record the verified languages into the knowledge base (release → real
+	// audio/subtitle languages), keyed by the release name, for group-tendency
+	// learning + a future shared service.
+	if releaseName != "" {
+		group := ""
+		if p, perr := release.ParseRelease(releaseName); perr == nil && p != nil {
+			group = p.Group
+		}
+		_ = w.store.UpsertReleaseLang(ctx, releaseName, group,
+			plex.StreamLangCodes(audio), plex.StreamLangCodes(subs), "plex")
 	}
 	if missing {
 		detail := fmt.Sprintf("wanted %s — available audio: %s; subtitles: %s",

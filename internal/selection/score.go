@@ -55,7 +55,13 @@ type Config struct {
 	PreferredLanguages []string
 	WeightLanguage     int
 	PreferEnglishSubs  bool
-	WeightSubs         int
+
+	// LikelyLanguageGroups (lower-cased release groups) are groups empirically
+	// verified to ship the top preferred language — learned from the release-
+	// language knowledge base. A candidate from such a group gets the same
+	// "likely contains the language" bonus as a MULTi release.
+	LikelyLanguageGroups map[string]bool
+	WeightSubs           int
 }
 
 // Release is the scoring view of a candidate (Prowlarr fields + parsed quality).
@@ -233,13 +239,21 @@ func (cfg Config) Score(r Release) int {
 				s += cfg.WeightLanguage
 			}
 		}
-		// "Highest chance of <top language>": a MULTi release likely carries the
-		// top preferred language even when it isn't explicitly tagged, so give it a
-		// partial bonus — enough to beat single-language releases that definitely
-		// lack it, but below an explicitly-tagged one. (The Plex check verifies
-		// after download and re-searches if it turns out to be missing.)
-		if len(cfg.PreferredLanguages) > 0 && contains(langs, "MULTI") && !contains(langs, cfg.PreferredLanguages[0]) {
-			s += cfg.WeightLanguage / 2
+		// "Highest chance of <top language>": when the top preferred language isn't
+		// explicitly tagged, a MULTi release — or one from a group empirically
+		// verified to ship that language — likely still carries it, so give it a
+		// partial bonus (below an explicitly-tagged release). The Plex check
+		// verifies after download and re-searches if it turns out to be missing.
+		if len(cfg.PreferredLanguages) > 0 && !contains(langs, cfg.PreferredLanguages[0]) {
+			likelyGroup := false
+			if len(cfg.LikelyLanguageGroups) > 0 {
+				if p, err := release.ParseRelease(r.Title); err == nil && p != nil && p.Group != "" {
+					likelyGroup = cfg.LikelyLanguageGroups[strings.ToLower(p.Group)]
+				}
+			}
+			if contains(langs, "MULTI") || likelyGroup {
+				s += cfg.WeightLanguage / 2
+			}
 		}
 		if cfg.PreferEnglishSubs && release.HasEnglishSubs(r.Title) {
 			s += cfg.WeightSubs
