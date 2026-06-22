@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJSON, putJSON, postJSON, setApiKey, getApiKey } from '../api'
+import { toast } from '../toast'
 import { Icon, Loading, ErrorBanner, initials } from '../ui'
 import { PlexWizard } from './PlexWizard'
 
@@ -189,8 +190,8 @@ export function Settings() {
     try {
       if ('api.key' in edits) setApiKey(edits['api.key'])
       const updated = await putJSON<SettingsResponse>('/settings', { settings: edits })
-      setData(updated); setEdits({}); setMsg('Saved.')
-    } catch (e) { setMsg('Save failed: ' + String(e)) }
+      setData(updated); setEdits({}); setMsg('Saved.'); toast('Settings saved.', 'ok')
+    } catch (e) { setMsg('Save failed: ' + String(e)); toast('Save failed: ' + String(e), 'err') }
   }
 
   async function test(svc: string, body: Record<string, string>) {
@@ -279,9 +280,9 @@ export function Settings() {
   async function runAction(path: string, what: string) {
     try {
       await postJSON(path, {})
-      setMsg(`${what} started — follow it on the Activity page.`)
+      toast(`${what} started — follow it on the Activity page.`, 'ok')
     } catch (e) {
-      setMsg(String(e))
+      toast(`${what} failed: ${String(e)}`, 'err')
     }
   }
 

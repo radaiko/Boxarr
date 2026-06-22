@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getJSON, postJSON, putJSON, del, posterURL, type Series, type Episode, type Release, type ListResponse } from '../api'
 import { Icon, Status, Loading, initials, MetaChips, ago } from '../ui'
+import { toast } from '../toast'
 import { SearchOverlay } from './SearchOverlay'
 
 export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void }) {
@@ -41,8 +42,14 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
     if (kind === 'episode') body.episodeId = Number(ref)
     setSearchOpen(false)
     setMsg(`Grabbing ${rel.title}…`); setMsgOk(false)
-    await postJSON(`/series/${id}/grab`, body)
-    setMsg('Grabbed — download queued on TorBox.'); setMsgOk(true); setReleases(null); setScope('')
+    try {
+      await postJSON(`/series/${id}/grab`, body)
+      setMsg('Grabbed — download queued on TorBox.'); setMsgOk(true); setReleases(null); setScope('')
+      toast('Grabbed — queued on TorBox.', 'ok')
+      reload() // refresh episode statuses (→ queued)
+    } catch (e) {
+      setMsg('Grab failed: ' + String(e)); setMsgOk(false); toast('Grab failed: ' + String(e), 'err')
+    }
   }
   async function remove() { await del(`/series/${id}`); onBack() }
   async function convertType() {

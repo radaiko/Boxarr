@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getJSON, postJSON, del, posterURL, type Movie, type Release, type ListResponse } from '../api'
 import { Icon, Status, Loading, initials, FilePanel } from '../ui'
+import { toast } from '../toast'
 import { SearchOverlay } from './SearchOverlay'
 
 export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) {
@@ -11,9 +12,10 @@ export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) 
   const [msg, setMsg] = useState('')
   const [msgOk, setMsgOk] = useState(false)
 
-  useEffect(() => {
+  function reload() {
     getJSON<Movie>(`/movies/${id}`).then(setMovie).catch((e: unknown) => setMsg(String(e)))
-  }, [id])
+  }
+  useEffect(reload, [id])
 
   async function search() {
     setSearchOpen(true); setBusy(true); setMsg(''); setReleases(null)
@@ -25,8 +27,14 @@ export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) 
   async function grab(rel: Release) {
     setSearchOpen(false)
     setMsg(`Grabbing ${rel.title}…`); setMsgOk(false)
-    await postJSON(`/movies/${id}/grab`, { releaseId: rel.releaseId })
-    setMsg('Grabbed — download queued on TorBox.'); setMsgOk(true); setReleases(null)
+    try {
+      await postJSON(`/movies/${id}/grab`, { releaseId: rel.releaseId })
+      setMsg('Grabbed — download queued on TorBox.'); setMsgOk(true); setReleases(null)
+      toast('Grabbed — queued on TorBox.', 'ok')
+      reload()
+    } catch (e) {
+      setMsg('Grab failed: ' + String(e)); setMsgOk(false); toast('Grab failed: ' + String(e), 'err')
+    }
   }
   async function remove() {
     await del(`/movies/${id}`); onBack()

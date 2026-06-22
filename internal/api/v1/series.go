@@ -461,11 +461,11 @@ func (h *Handler) grabSeries(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 		return
 	}
-	// Flag the targeted episode(s) searching.
+	// Flag the targeted episode queued (a job is now on TorBox).
 	if mediaType == "episode" {
 		if ep, eerr := h.deps.Store.GetEpisode(ctx, mediaRef); eerr == nil {
-			if ep.Status == media.MediaWanted || ep.Status == media.MediaMissing {
-				_ = h.deps.Store.SetEpisodeStatus(ctx, ep.ID, media.MediaSearching)
+			if ep.Status != media.MediaAvailable {
+				_ = h.deps.Store.SetEpisodeStatus(ctx, ep.ID, media.MediaQueued)
 			}
 		}
 	}

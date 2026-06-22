@@ -8,6 +8,7 @@ import { Notifications } from './views/Notifications'
 import { TorBox } from './views/TorBox'
 import { Activity } from './views/Activity'
 import { Dashboard } from './views/Dashboard'
+import { Toaster } from './toast'
 
 const NAV = [
   { id: 'Home', icon: 'home', group: 'Overview' },
@@ -106,6 +107,7 @@ export function App() {
           {view === 'Settings' && <Settings />}
         </main>
       </div>
+      <Toaster />
     </div>
   )
 }

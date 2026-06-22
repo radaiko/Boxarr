@@ -16,7 +16,7 @@ export function ReleaseTable({ releases, onGrab, currentName }: {
         <thead>
           <tr>
             <th>Release</th><th>Proto</th><th className="right">Size</th><th>Quality</th><th>Languages</th>
-            <th className="right">Health</th><th>Cached</th><th className="right">Score</th><th />
+            <th className="right">Health</th><th>Cached</th><th className="right">Score</th><th className="grab-col" />
           </tr>
         </thead>
         <tbody>
@@ -39,7 +39,7 @@ export function ReleaseTable({ releases, onGrab, currentName }: {
               <td className="num">{r.seeders ?? r.grabs ?? '—'}</td>
               <td>{r.cached == null ? '—' : r.cached ? <span className="chip instant">instant</span> : <span className="muted">download</span>}</td>
               <td className="num">{r.rejected ? '—' : r.score}</td>
-              <td className="right">
+              <td className="right grab-col">
                 <button className="btn btn-sm btn-primary" onClick={() => onGrab(r)} disabled={r.rejected}>
                   <Icon name="download" /> Grab
                 </button>

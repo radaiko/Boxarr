@@ -47,10 +47,10 @@ func (h *Handler) grabMovie(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 		return
 	}
-	// Link the movie to the (new or existing) job and flag it searching.
+	// Link the movie to the (new or existing) job and flag it queued.
 	m.JobID = j.ID
-	if m.Status == media.MediaWanted || m.Status == media.MediaMissing {
-		m.Status = media.MediaSearching
+	if m.Status != media.MediaAvailable {
+		m.Status = media.MediaQueued // a job is queued on TorBox now
 	}
 	if uerr := h.deps.Store.UpdateMovie(ctx, m); uerr != nil {
 		h.deps.Logger.Error("grab: linking movie to job", "error", uerr)

@@ -308,6 +308,14 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .dash-row-time { font-size: 11px; flex: none; }
 .dash-pct { font-family: var(--mono); font-size: 12px; color: var(--info); flex: none; }
 .dash-empty { color: var(--text-faint); font-size: 13px; margin: 6px 0; }
+
+/* ── Toasts ── */
+.toaster { position: fixed; right: 18px; bottom: 18px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+.toast-pop { padding: 10px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); box-shadow: 0 6px 24px #0008; animation: toast-in .18s ease-out; }
+.toast-pop.ok { border-color: #1f4a30; background: #102218; color: var(--ok); }
+.toast-pop.err { border-color: #5a1f1f; background: #2a1212; color: var(--danger); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: #ffffff05; }
 .task-details-row td { padding-top: 0; }
@@ -333,8 +341,11 @@ tr.clickable:hover { background: #ffffff05; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: min(680px, 100%); max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(0,0,0,.5); }
 .modal-head { display: flex; align-items: center; gap: 12px; padding: 15px 18px; border-bottom: 1px solid var(--border-soft); }
 .modal-title { font-weight: 600; }
-.modal-body { padding: 16px 18px; overflow: auto; }
-.modal-wide { width: min(1040px, 100%); }
+.modal-body { padding: 16px 18px; overflow-y: scroll; overflow-x: auto; }
+.modal-wide { width: min(1240px, 100%); }
+/* Keep the Grab column pinned to the right so it's always reachable. */
+.tbl th.grab-col, .tbl td.grab-col { position: sticky; right: 0; background: var(--surface); padding-left: 10px; }
+.tbl tr:hover td.grab-col { background: var(--surface-2); }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
 .filter-bar .input { width: auto; min-width: 150px; }
 .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim); cursor: pointer; }
