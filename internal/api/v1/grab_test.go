@@ -37,9 +37,9 @@ func TestGrabTorrentCreatesJobAndDedups(t *testing.T) {
 	if j.Protocol != "torrent" || j.TorrentHash != "abc" || j.MediaType != "movie" || j.MediaRef != mid {
 		t.Fatalf("job not linked correctly: %+v", j)
 	}
-	// Movie flips to searching and links the job.
+	// Movie flips to queued (a job is on TorBox) and links the job.
 	m, _ := st.GetMovie(ctx, mid)
-	if m.Status != media.MediaSearching || m.JobID != got.JobID {
+	if m.Status != media.MediaQueued || m.JobID != got.JobID {
 		t.Fatalf("movie not linked: status=%s jobID=%d", m.Status, m.JobID)
 	}
 	// Re-grab dedups to the same job.
