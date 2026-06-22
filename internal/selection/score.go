@@ -233,6 +233,14 @@ func (cfg Config) Score(r Release) int {
 				s += cfg.WeightLanguage
 			}
 		}
+		// "Highest chance of <top language>": a MULTi release likely carries the
+		// top preferred language even when it isn't explicitly tagged, so give it a
+		// partial bonus — enough to beat single-language releases that definitely
+		// lack it, but below an explicitly-tagged one. (The Plex check verifies
+		// after download and re-searches if it turns out to be missing.)
+		if len(cfg.PreferredLanguages) > 0 && contains(langs, "MULTI") && !contains(langs, cfg.PreferredLanguages[0]) {
+			s += cfg.WeightLanguage / 2
+		}
 		if cfg.PreferEnglishSubs && release.HasEnglishSubs(r.Title) {
 			s += cfg.WeightSubs
 		}
