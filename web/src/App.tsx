@@ -9,6 +9,7 @@ import { TorBox } from './views/TorBox'
 import { Activity } from './views/Activity'
 import { Dashboard } from './views/Dashboard'
 import { Languages } from './views/Languages'
+import { Logs } from './views/Logs'
 import { Toaster } from './toast'
 
 const NAV = [
@@ -18,6 +19,7 @@ const NAV = [
   { id: 'Anime', icon: 'anime', group: 'Library' },
   { id: 'TorBox', icon: 'storage', group: 'System' },
   { id: 'Languages', icon: 'languages', group: 'System' },
+  { id: 'Logs', icon: 'logs', group: 'System' },
   { id: 'Activity', icon: 'download', group: 'Activity' },
   { id: 'Notifications', icon: 'notifications', group: 'Activity' },
   { id: 'Settings', icon: 'settings', group: 'Config' },
@@ -105,6 +107,7 @@ export function App() {
           {view === 'Anime' && <Series anime openId={openFor('Anime')?.id} openSeq={openFor('Anime')?.seq} />}
           {view === 'TorBox' && <TorBox onOpenCatalog={openCatalog} />}
           {view === 'Languages' && <Languages />}
+          {view === 'Logs' && <Logs />}
           {view === 'Activity' && <Activity />}
           {view === 'Notifications' && <Notifications onOpenCatalog={openCatalog} />}
           {view === 'Settings' && <Settings />}

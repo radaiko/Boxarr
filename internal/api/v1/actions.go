@@ -4,9 +4,28 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 
+	"github.com/radaiko/boxarr/internal/logbuf"
 	"github.com/radaiko/boxarr/internal/task"
 )
+
+// logs returns the recent in-memory log tail (newest first) for the Logs view,
+// filterable by minimum level and a substring query.
+func (h *Handler) logs(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Logs == nil {
+		h.writeJSON(w, http.StatusOK, map[string]any{"entries": []any{}})
+		return
+	}
+	limit := 500
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 {
+			limit = n
+		}
+	}
+	entries := h.deps.Logs.Entries(limit, logbuf.ParseLevel(r.URL.Query().Get("level")), r.URL.Query().Get("q"))
+	h.writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+}
 
 // triggerUpgradeSearch runs the language/quality upgrade search now (in the
 // background so the request returns immediately).

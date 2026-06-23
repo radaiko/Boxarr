@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/logbuf"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/task"
@@ -70,6 +71,7 @@ type Deps struct {
 	Converter  SeriesConverter
 	PlexLang   PlexLanguager // runs the Plex auto-language sweep on demand (optional)
 	Scheduler  Scheduler     // background-loop schedule for the dashboard (optional)
+	Logs       *logbuf.Ring  // in-memory recent log tail for the Logs view (optional)
 	Tasks      *task.Manager // background runner for adopt/delete (nil = run inline)
 	Logger     *slog.Logger
 	Version    string
@@ -102,6 +104,7 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/search/missing", h.triggerSearchMissing)
 	r.Post("/library/refresh", h.triggerLibraryRefresh)
 	r.Get("/releases/languages", h.releaseLanguages)
+	r.Get("/logs", h.logs)
 	r.Get("/movies", h.listMovies)
 	r.Get("/movies/lookup", h.lookupMovies)
 	r.Get("/movies/{id}", h.getMovie)

@@ -20,6 +20,7 @@ import (
 	apiv1 "github.com/radaiko/boxarr/internal/api/v1"
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/logbuf"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/task"
@@ -50,7 +51,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.SlogLevel()}))
+	logRing := logbuf.New(2000)
+	logger := slog.New(logbuf.NewHandler(
+		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.SlogLevel()}), logRing))
 	slog.SetDefault(logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -98,7 +101,7 @@ func run() error {
 	srv.SetHealReporter(workers)
 	srv.SetV1Router(apiv1.NewHandler(apiv1.Deps{
 		Store: st, Settings: set, Catalog: cat, Health: workers, Reconciler: workers, Adopter: workers,
-		Deleter: workers, Converter: workers, PlexLang: workers, Scheduler: workers, Tasks: tasks, Logger: logger, Version: version,
+		Deleter: workers, Converter: workers, PlexLang: workers, Scheduler: workers, Tasks: tasks, Logs: logRing, Logger: logger, Version: version,
 	}).Router())
 	seerrDeps := seerr.Deps{Store: st, Settings: set, Catalog: cat, Logger: logger}
 	srv.SetSeerr(
