@@ -43,6 +43,7 @@ func (s *Service) SearchAllMissing(ctx context.Context, report func(string)) (gr
 		return grabbed, searched, err
 	}
 	seriesCache := map[int64]*media.Series{}
+	sceneCache := map[int64]map[int64]sceneNum{}
 	for _, ep := range eps {
 		if ctx.Err() != nil {
 			return grabbed, searched, ctx.Err()
@@ -53,9 +54,12 @@ func (s *Service) SearchAllMissing(ctx context.Context, report func(string)) (gr
 				continue
 			}
 			seriesCache[ep.SeriesID] = sr
+			if all, e := s.store.ListEpisodes(ctx, ep.SeriesID); e == nil {
+				sceneCache[ep.SeriesID] = sceneNumbers(all)
+			}
 		}
 		searched++
-		if s.forceSearchEpisode(ctx, sr, ep, rep) {
+		if s.forceSearchEpisode(ctx, sr, ep, sceneCache[ep.SeriesID][ep.ID], rep) {
 			grabbed++
 		}
 	}
@@ -95,17 +99,13 @@ func (s *Service) forceSearchMovie(ctx context.Context, m *media.Movie, rep func
 	return true
 }
 
-func (s *Service) forceSearchEpisode(ctx context.Context, sr *media.Series, ep *media.Episode, rep func(string, ...any)) bool {
+func (s *Service) forceSearchEpisode(ctx context.Context, sr *media.Series, ep *media.Episode, sc sceneNum, rep func(string, ...any)) bool {
 	kind := "series"
 	if sr.SeriesType == "anime" {
 		kind = "anime"
 	}
 	label := fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber)
-	results, err := s.search.Search(ctx, prowlarr.SearchParams{Query: label, Type: "tvsearch", Categories: []int{5000}})
-	if err != nil {
-		rep("%s — search error: %v", label, err)
-		return false
-	}
+	results := s.episodeReleases(ctx, sr.Title, ep, kind, sc)
 	best, ok := s.pickBest(ctx, results, kind)
 	if !ok {
 		rep("%s — no acceptable release (%d candidates)", label, len(results))

@@ -46,9 +46,10 @@ func (s *Service) UpgradeWanted(ctx context.Context) error {
 			kind = "anime"
 		}
 		eps, _ := s.store.ListEpisodes(ctx, sr.ID)
+		scMap := sceneNumbers(eps)
 		for _, ep := range eps {
 			if ep.HasFile && ep.Monitored && ep.JobID != 0 {
-				s.tryUpgradeEpisode(ctx, sr, ep, kind, now)
+				s.tryUpgradeEpisode(ctx, sr, ep, kind, now, scMap[ep.ID])
 			}
 		}
 	}
@@ -85,7 +86,7 @@ func (s *Service) tryUpgradeMovie(ctx context.Context, m *media.Movie, now time.
 	}
 }
 
-func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *media.Episode, kind string, now time.Time) {
+func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *media.Episode, kind string, now time.Time, sc sceneNum) {
 	cur, err := s.store.GetJob(ctx, ep.JobID)
 	if err != nil || cur == nil {
 		return
@@ -102,11 +103,7 @@ func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *m
 		return
 	}
 	_ = s.store.MarkEpisodesSearched(ctx, ep.ID)
-	q := fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber)
-	results, err := s.search.Search(ctx, prowlarr.SearchParams{Query: q, Type: "tvsearch", Categories: []int{5000}})
-	if err != nil {
-		return
-	}
+	results := s.episodeReleases(ctx, sr.Title, ep, kind, sc)
 	if best, ok := s.pickBest(ctx, results, kind); ok && s.shouldGrabUpgrade(cfg, ideal, cur.NZBName, best.Title, ep.LangMissing) {
 		_, _ = s.grabBest(ctx, best, "episode", ep.ID, true)
 	}

@@ -100,6 +100,7 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 	}
 	today := time.Now().UTC().Format("2006-01-02")
 	cad := s.cadenceFromSettings()
+	scMap := sceneNumbers(episodes) // anime broadcast/scene numbering from air-date gaps
 	for _, ep := range episodes {
 		if ep.HasFile || !ep.Monitored || ep.AirDate == "" || ep.AirDate > today {
 			continue
@@ -108,20 +109,15 @@ func (s *Service) SearchWantedForSeries(ctx context.Context, seriesID int64) err
 		if !searchDue(ep.AirDate, ep.LastSearchedAt, time.Now(), cad) {
 			continue
 		}
-		q := fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber)
 		_ = s.store.MarkEpisodesSearched(ctx, ep.ID)
-		results, serr := s.search.Search(ctx, prowlarr.SearchParams{Query: q, Type: "tvsearch", Categories: []int{5000}})
-		if serr != nil {
-			s.logSearchErr(q, serr)
-			continue
-		}
+		results := s.episodeReleases(ctx, sr.Title, ep, kind, scMap[ep.ID])
 		best, ok := s.pickBest(ctx, results, kind)
 		if !ok {
 			continue
 		}
 		jb, gerr := s.grabBest(ctx, best, "episode", ep.ID, false)
 		if gerr != nil {
-			s.logSearchErr(q, gerr)
+			s.logSearchErr(sr.Title, gerr)
 			continue
 		}
 		ep.JobID = jb.ID
