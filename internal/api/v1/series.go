@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -121,13 +122,20 @@ func (h *Handler) getSeries(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "not_found", "series not found")
 		return
 	}
-	seasons, _ := h.deps.Store.ListSeasons(ctx, id)
 	episodes, _ := h.deps.Store.ListEpisodes(ctx, id)
 	targets := h.symlinkTargets(ctx)
+	// Group + label by the broadcast/scene numbering from TVDB when present, so a
+	// flat TMDB season (Solo Leveling S01E01-25) displays as the real seasons
+	// (Season 1 / Season 2). Falls back to TMDB numbering without TVDB data.
 	bySeason := map[int][]episodeDTO{}
+	monitored := map[int]bool{}
 	for _, e := range episodes {
+		ds, de := e.SeasonNumber, e.EpisodeNumber
+		if e.SceneSeason > 0 {
+			ds, de = e.SceneSeason, e.SceneEpisode
+		}
 		ed := episodeDTO{
-			ID: e.ID, SeasonNumber: e.SeasonNumber, EpisodeNumber: e.EpisodeNumber, Title: e.Title,
+			ID: e.ID, SeasonNumber: ds, EpisodeNumber: de, Title: e.Title,
 			AirDate: e.AirDate, Status: string(e.Status), Monitored: e.Monitored, HasFile: e.HasFile,
 			LangMissing:    e.LangMissing,
 			AbsoluteNumber: e.AbsoluteNumber, SceneSeason: e.SceneSeason, SceneEpisode: e.SceneEpisode,
@@ -136,15 +144,25 @@ func (h *Handler) getSeries(w http.ResponseWriter, r *http.Request) {
 		if e.Status == media.MediaFailed {
 			ed.LastError = h.failReason(ctx, e.JobID)
 		}
-		bySeason[e.SeasonNumber] = append(bySeason[e.SeasonNumber], ed)
+		bySeason[ds] = append(bySeason[ds], ed)
+		if e.Monitored {
+			monitored[ds] = true
+		}
 	}
 	dto := seriesDTO{
 		ID: s.ID, TMDBID: s.TMDBID, TVDBID: s.TVDBID, Title: s.Title, Year: s.Year,
 		Overview: s.Overview, Monitored: s.Monitored, SeriesType: s.SeriesType,
 		PosterPath: s.PosterPath, RootFolderPath: s.RootFolderPath, LibraryPath: s.LibraryPath,
 	}
-	for _, sn := range seasons {
-		sd := seasonDTO{SeasonNumber: sn.SeasonNumber, Monitored: sn.Monitored, Episodes: bySeason[sn.SeasonNumber]}
+	nums := make([]int, 0, len(bySeason))
+	for n := range bySeason {
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	for _, n := range nums {
+		eps := bySeason[n]
+		sort.Slice(eps, func(i, j int) bool { return eps[i].EpisodeNumber < eps[j].EpisodeNumber })
+		sd := seasonDTO{SeasonNumber: n, Monitored: monitored[n], Episodes: eps}
 		sd.Status = seriesRollup([]seasonDTO{sd})
 		dto.Seasons = append(dto.Seasons, sd)
 	}
@@ -271,24 +289,22 @@ func (h *Handler) setSeasonMonitored(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	// Best-effort: flip the matching TMDB season-row flag if one exists (scene
+	// seasons from TVDB may not have a row).
 	seasons, _ := h.deps.Store.ListSeasons(ctx, id)
-	var seasonID int64
 	for _, s := range seasons {
 		if s.SeasonNumber == season {
-			seasonID = s.ID
+			_ = h.deps.Store.SetSeasonMonitored(ctx, s.ID, body.Monitored)
 		}
 	}
-	if seasonID == 0 {
-		h.writeError(w, http.StatusNotFound, "not_found", "season not found")
-		return
-	}
-	if err := h.deps.Store.SetSeasonMonitored(ctx, seasonID, body.Monitored); err != nil {
-		h.writeError(w, http.StatusInternalServerError, "internal", "updating season")
-		return
-	}
+	// Cascade to every episode in the *displayed* (scene when present) season.
 	episodes, _ := h.deps.Store.ListEpisodes(ctx, id)
 	for _, e := range episodes {
-		if e.SeasonNumber == season {
+		ds := e.SeasonNumber
+		if e.SceneSeason > 0 {
+			ds = e.SceneSeason
+		}
+		if ds == season {
 			h.applyEpisodeMonitor(ctx, e, body.Monitored)
 		}
 	}
@@ -463,9 +479,26 @@ func (h *Handler) searchEpisode(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "not_found", "episode not found")
 		return
 	}
-	q := fmt.Sprintf("%s S%02dE%02d", s.Title, ep.SeasonNumber, ep.EpisodeNumber)
 	_ = h.deps.Store.MarkEpisodesSearched(ctx, ep.ID)
-	h.runSearch(w, r, prowlarr.SearchParams{Query: q, Type: "tvsearch", Categories: []int{5000}})
+	// Build query variations: scene numbering (from TVDB) first when it differs,
+	// then the original TMDB numbering, then the absolute number — so a release
+	// tagged S02E13 (or absolute 25) shows up, not just S01E25.
+	add := map[string]bool{}
+	var queries []prowlarr.SearchParams
+	push := func(q string) {
+		if !add[q] {
+			add[q] = true
+			queries = append(queries, prowlarr.SearchParams{Query: q, Type: "tvsearch", Categories: []int{5000}})
+		}
+	}
+	if ep.SceneSeason > 0 && (ep.SceneSeason != ep.SeasonNumber || ep.SceneEpisode != ep.EpisodeNumber) {
+		push(fmt.Sprintf("%s S%02dE%02d", s.Title, ep.SceneSeason, ep.SceneEpisode))
+	}
+	push(fmt.Sprintf("%s S%02dE%02d", s.Title, ep.SeasonNumber, ep.EpisodeNumber))
+	if ep.AbsoluteNumber > 0 {
+		push(fmt.Sprintf("%s %02d", s.Title, ep.AbsoluteNumber))
+	}
+	h.runSearchMulti(w, r, queries)
 }
 
 // grabSeries grabs a chosen release for a series scope (episode | season | series).

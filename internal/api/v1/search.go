@@ -110,6 +110,41 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, p prowlarr.S
 		h.writeError(w, http.StatusBadGateway, "upstream_unavailable", "prowlarr: "+err.Error())
 		return
 	}
+	h.renderSearch(w, r, results)
+}
+
+// runSearchMulti runs several queries, merges + dedupes the candidates, then
+// ranks them — used by the anime episode search so scene + original + absolute
+// numbering all appear in one interactive result set.
+func (h *Handler) runSearchMulti(w http.ResponseWriter, r *http.Request, queries []prowlarr.SearchParams) {
+	ctx := r.Context()
+	seen := map[string]bool{}
+	var merged []prowlarr.ReleaseResource
+	for _, p := range queries {
+		res, err := h.deps.Settings.Prowlarr().Search(ctx, p)
+		if err != nil {
+			continue
+		}
+		for _, rr := range res {
+			key := rr.GUID
+			if key == "" {
+				key = rr.InfoHash
+			}
+			if key == "" {
+				key = rr.Title
+			}
+			if !seen[key] {
+				seen[key] = true
+				merged = append(merged, rr)
+			}
+		}
+	}
+	h.renderSearch(w, r, merged)
+}
+
+// renderSearch scores + ranks already-fetched results and writes the list.
+func (h *Handler) renderSearch(w http.ResponseWriter, r *http.Request, results []prowlarr.ReleaseResource) {
+	ctx := r.Context()
 	cached := h.cachedSet(ctx, results)
 	cfg := h.deps.Settings.SelectionConfig()
 
