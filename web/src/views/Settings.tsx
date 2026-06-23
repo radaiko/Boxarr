@@ -32,8 +32,8 @@ const groups: { title: string; fields: { key: string; label: string; secret?: bo
   {
     title: 'TVDB',
     fields: [
-      { key: 'tvdb.api_key', label: 'API key', secret: true },
-      { key: 'tvdb.pin', label: 'PIN', secret: true },
+      { key: 'tvdb.api_key', label: 'v4 API key (UUID — old v3 keys do not work)', secret: true },
+      { key: 'tvdb.pin', label: 'Subscriber PIN (personal keys; blank for licensed keys)', secret: true },
     ],
   },
   {

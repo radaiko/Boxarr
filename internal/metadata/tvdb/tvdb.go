@@ -115,7 +115,23 @@ func (c *Client) login(ctx context.Context) error {
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("tvdb login: status %d", resp.StatusCode)
+		// Surface TheTVDB's own message (it explains the 401 — bad key, PIN
+		// required/invalid, etc.) instead of just the status code.
+		msg := strings.TrimSpace(string(body))
+		var e struct {
+			Message string `json:"message"`
+			Status  string `json:"status"`
+		}
+		if json.Unmarshal(body, &e) == nil && e.Message != "" {
+			msg = e.Message
+		}
+		if len(msg) > 300 {
+			msg = msg[:300]
+		}
+		if msg == "" {
+			return fmt.Errorf("tvdb login: status %d", resp.StatusCode)
+		}
+		return fmt.Errorf("tvdb login: status %d: %s", resp.StatusCode, msg)
 	}
 	var env struct {
 		Data struct {

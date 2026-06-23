@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -81,8 +82,30 @@ func (h *Handler) testConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		h.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "service": svc, "detail": err.Error()})
+		msg := err.Error()
+		if svc == "tvdb" {
+			msg += tvdbHint(msg)
+		}
+		h.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "service": svc, "detail": msg})
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": svc, "detail": detail})
+}
+
+// tvdbHint turns TheTVDB's raw login error into actionable guidance. TheTVDB v4
+// is the only live API — old v3/"legacy" keys cannot authenticate against it.
+func tvdbHint(msg string) string {
+	l := strings.ToLower(msg)
+	switch {
+	case strings.Contains(l, "apikey invalid") || strings.Contains(l, "invalid api"):
+		return " — this looks like an old v3/legacy key. TheTVDB v4 needs a new v4 API key (a UUID) created at thetvdb.com → Dashboard → API keys (model: \"End-User Subscriptions\"). v3 keys no longer work."
+	case strings.Contains(l, "pin invalid"):
+		return " — the API key is fine but the subscriber PIN was rejected. Re-copy your current PIN from thetvdb.com → Account → Subscription."
+	case strings.Contains(l, "pin required") || strings.Contains(l, "pin is required"):
+		return " — this is a user-supported key, so it needs your TheTVDB subscriber PIN in the PIN field."
+	case strings.Contains(l, "401"):
+		return " — credentials rejected. For a personal v4 key, fill in both the v4 API key and your subscriber PIN; for a licensed key, leave the PIN blank."
+	default:
+		return ""
+	}
 }
