@@ -76,6 +76,9 @@ func (h *Handler) storage(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			h.deps.Logger.Warn("storage: /user/me failed", "error", err)
+			// Surface a TorBox API failure (esp. an expired/invalid token) so the UI
+			// can warn prominently instead of it only appearing in the logs.
+			resp["torboxError"] = err.Error()
 		}
 	}
 	h.writeJSON(w, http.StatusOK, resp)

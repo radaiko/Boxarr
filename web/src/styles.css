@@ -297,6 +297,14 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .dash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .lang-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 16px; }
 
+/* ── Alert banner (TorBox/API failures) ── */
+.alert-banner { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: #2a0f0f; border: 1px solid #7a2222; color: #ff9b9b; border-radius: 10px;
+  padding: 12px 16px; margin-bottom: 16px; font: inherit; font-size: 14px; cursor: pointer; }
+.alert-banner:hover { background: #350f0f; border-color: #9a2c2c; }
+.alert-banner svg { flex: 0 0 auto; width: 22px; height: 22px; color: #ff6b6b; }
+.alert-banner b { color: #ffd0d0; }
+
 /* ── Logs ── */
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .seg-btn { background: transparent; color: var(--muted); border: 0; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }

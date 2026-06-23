@@ -13,6 +13,7 @@ interface StorageResp {
   plan?: { tierName: string; concurrentSlots: number }
   downloads?: { active?: number; queued?: number }
   limits?: { dailyCap: number; usedToday: number; cooldownUntil: string }
+  torboxError?: string
 }
 interface Download { id: number; name: string; state: string; mediaType: string; progress: number; protocol: string }
 interface HistoryItem { id: number; name: string; state: string; createdAt: string }
@@ -60,6 +61,12 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
 
   return (
     <section className="dash">
+      {storage?.torboxError && (
+        <button className="alert-banner" onClick={() => onNavigate('Settings')}>
+          <Icon name="notifications" />
+          <span><b>TorBox connection failed.</b> {storage.torboxError} — click to fix your token in Settings.</span>
+        </button>
+      )}
       <div className="dash-actions">
         <button className="btn btn-sm btn-primary" onClick={() => void run('/search/missing', 'Search all missing')}>
           <Icon name="search" /> Search all missing
