@@ -20,12 +20,14 @@ on:
         required: true
         default: '0.0.1-dev'
 
-# Group per ref: a newer main push cancels the older in-progress main build (no
-# point publishing a stale :latest), while each tag has its own group so tag
-# builds run immediately instead of queuing behind the same-commit main build.
+# Serialize ALL release builds through one group. A commit's main + tag pushes
+# build the same multi-arch image; running them concurrently contends on Docker
+# Hub base-image pulls and hangs both builds to the timeout (observed: 8m solo vs
+# 24m+ concurrent). Serializing costs a tag build ~7m of queue wait but keeps
+# every build reliable. cancel-in-progress:false so a queued tag isn't dropped.
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release
+  cancel-in-progress: false
 
 jobs:
   publish:
