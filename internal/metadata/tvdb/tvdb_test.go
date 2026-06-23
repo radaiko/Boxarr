@@ -2,6 +2,7 @@ package tvdb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -80,4 +81,31 @@ func TestEpisodesPagination(t *testing.T) {
 	if eps[1].Number != 2 {
 		t.Errorf("page 2 episode wrong: %+v", eps[1])
 	}
+}
+
+func TestLoginOmitsEmptyPin(t *testing.T) {
+	check := func(pin string, wantPin bool) {
+		var gotBody map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/login" {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				_, _ = w.Write([]byte(`{"status":"success","data":{"token":"t"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"status":"success","data":{"id":1,"name":"X"}}`))
+		}))
+		defer srv.Close()
+		if _, err := NewWithBaseURL("k", pin, srv.URL).SeriesExtended(context.Background(), 1); err != nil {
+			t.Fatalf("SeriesExtended(pin=%q): %v", pin, err)
+		}
+		if gotBody["apikey"] != "k" {
+			t.Errorf("apikey not sent: %v", gotBody)
+		}
+		_, has := gotBody["pin"]
+		if has != wantPin {
+			t.Errorf("pin=%q: body has pin=%v, want %v (body=%v)", pin, has, wantPin, gotBody)
+		}
+	}
+	check("", false)    // legacy / negotiated key — apikey only
+	check("1234", true) // user-supported key — apikey + pin
 }

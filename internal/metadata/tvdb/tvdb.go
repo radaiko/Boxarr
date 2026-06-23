@@ -94,7 +94,15 @@ func (c *Client) ensureToken(ctx context.Context) error {
 
 // login POSTs /login and stores the token + parsed expiry. Caller holds c.mu.
 func (c *Client) login(ctx context.Context) error {
-	payload, _ := json.Marshal(map[string]string{"apikey": c.apiKey, "pin": c.pin})
+	// TVDB v4 accepts two key types: user-supported keys authenticate with
+	// apikey + a subscriber PIN, while legacy/negotiated keys use the apikey
+	// alone. Only send "pin" when one is configured — an empty pin makes TVDB
+	// treat a legacy key as a (failed) user-supported login.
+	creds := map[string]string{"apikey": c.apiKey}
+	if c.pin != "" {
+		creds["pin"] = c.pin
+	}
+	payload, _ := json.Marshal(creds)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/login", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("building login request: %w", err)
