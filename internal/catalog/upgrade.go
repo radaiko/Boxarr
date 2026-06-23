@@ -80,7 +80,7 @@ func (s *Service) tryUpgradeMovie(ctx context.Context, m *media.Movie, now time.
 	if err != nil {
 		return
 	}
-	if best, ok := s.pickBest(ctx, results, "movie"); ok && s.isUpgrade(cfg, ideal, cur.NZBName, best.Title) {
+	if best, ok := s.pickBest(ctx, results, "movie"); ok && s.shouldGrabUpgrade(cfg, ideal, cur.NZBName, best.Title, m.LangMissing) {
 		_, _ = s.grabBest(ctx, best, "movie", m.ID, true)
 	}
 }
@@ -107,7 +107,7 @@ func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *m
 	if err != nil {
 		return
 	}
-	if best, ok := s.pickBest(ctx, results, kind); ok && s.isUpgrade(cfg, ideal, cur.NZBName, best.Title) {
+	if best, ok := s.pickBest(ctx, results, kind); ok && s.shouldGrabUpgrade(cfg, ideal, cur.NZBName, best.Title, ep.LangMissing) {
 		_, _ = s.grabBest(ctx, best, "episode", ep.ID, true)
 	}
 }
@@ -121,12 +121,20 @@ func idealLangs(cfg selection.Config) []string {
 	return cfg.RequiredLanguages
 }
 
-// isUpgrade reports whether candidate is a worthwhile replacement for current:
-// it must reach the ideal language (which current lacks) and score strictly
-// higher, so we never churn one acceptable release for an equivalent one.
-func (s *Service) isUpgrade(cfg selection.Config, ideal []string, current, candidate string) bool {
+// shouldGrabUpgrade decides whether to replace current with candidate. The
+// candidate must reach the ideal language (DE/EN/MULTi tag — pickBest has already
+// dropped releases the KB verified to lack it). Then:
+//   - langMissing (current is Plex-verified unwatchable): grab any language-
+//     providing release that differs from current — language beats quality here,
+//     so a correct-language 720p replaces a wrong-language 1080p.
+//   - otherwise (pure quality/language upgrade): require a strictly higher score,
+//     so we never churn one acceptable release for an equivalent one.
+func (s *Service) shouldGrabUpgrade(cfg selection.Config, ideal []string, current, candidate string, langMissing bool) bool {
 	if !languageSatisfied(candidate, ideal, cfg.RequireAnyLanguage) {
 		return false
+	}
+	if langMissing {
+		return candidate != current
 	}
 	return cfg.Score(selection.Release{Title: candidate}) > cfg.Score(selection.Release{Title: current})
 }

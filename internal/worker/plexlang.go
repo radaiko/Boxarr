@@ -220,11 +220,24 @@ func streamLangs(ss []plex.Stream) string {
 	return strings.Join(out, ", ")
 }
 
+// payloadItemEquals reports whether a notification payload's "item" field equals label.
+func payloadItemEquals(payload, label string) bool {
+	var m map[string]any
+	if json.Unmarshal([]byte(payload), &m) != nil {
+		return false
+	}
+	s, _ := m["item"].(string)
+	return s == label
+}
+
 func (w *Workers) notifyLanguageMissing(ctx context.Context, kind string, catalogID int64, label, detail string) {
 	existing, _ := w.store.ListNotifications(ctx, false, 500)
 	for _, n := range existing {
-		if n.Type == "language_missing" && containsName(n.Payload, label) {
-			return // already raised
+		// Dedup on the payload "item" field — language_missing payloads key the
+		// item there (not "remotePath", which containsName checks). Without this
+		// the check never matched and every hourly sweep re-raised the same items.
+		if n.Type == "language_missing" && payloadItemEquals(n.Payload, label) {
+			return // already raised for this item
 		}
 	}
 	payload, _ := json.Marshal(map[string]any{
