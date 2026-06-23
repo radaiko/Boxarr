@@ -250,7 +250,8 @@ func (s *Store) SetSeasonMonitored(ctx context.Context, id int64, monitored bool
 const episodeColumns = `id, series_id, season_id, season_number, episode_number,
 	absolute_number, tmdb_id, tvdb_id, title, overview, air_date, runtime,
 	still_path, status, monitored, has_file, job_id, library_path,
-	metadata_json, last_searched_at, created_at, updated_at, lang_missing`
+	metadata_json, last_searched_at, created_at, updated_at, lang_missing,
+	scene_season, scene_episode`
 
 func scanEpisode(row scanner) (*media.Episode, error) {
 	var m media.Episode
@@ -264,7 +265,8 @@ func scanEpisode(row scanner) (*media.Episode, error) {
 	if err := row.Scan(&m.ID, &m.SeriesID, &m.SeasonID, &m.SeasonNumber, &m.EpisodeNumber,
 		&absNum, &tmdbID, &tvdbID, &m.Title, &m.Overview, &airDate, &runtime,
 		&still, &status, &monitored, &hasFile, &jobID, &libPath, &meta,
-		&lastSearched, &m.CreatedAt, &m.UpdatedAt, &langMissing); err != nil {
+		&lastSearched, &m.CreatedAt, &m.UpdatedAt, &langMissing,
+		&m.SceneSeason, &m.SceneEpisode); err != nil {
 		return nil, err
 	}
 	m.AbsoluteNumber, m.TMDBID, m.TVDBID = int(absNum.Int64), tmdbID.Int64, tvdbID.Int64
@@ -386,6 +388,17 @@ func (s *Store) UpdateEpisode(ctx context.Context, m *media.Episode) error {
 		b2i(m.HasFile), nullInt(m.JobID), nullStr(m.LibraryPath), nullStr(m.MetadataJSON), m.ID)
 	if err != nil {
 		return fmt.Errorf("updating episode %d: %w", m.ID, err)
+	}
+	return nil
+}
+
+// SetEpisodeSceneNumbers stores the TVDB-derived scene season/episode + absolute
+// number for an episode (used by the anime search to map TMDB's flat numbering).
+func (s *Store) SetEpisodeSceneNumbers(ctx context.Context, id int64, season, episode, absolute int) error {
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE episode SET scene_season=?, scene_episode=?, absolute_number=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		season, episode, nullInt(int64(absolute)), id); err != nil {
+		return fmt.Errorf("setting episode scene numbers: %w", err)
 	}
 	return nil
 }

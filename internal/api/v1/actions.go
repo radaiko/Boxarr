@@ -72,6 +72,23 @@ func (h *Handler) triggerSearchMissing(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 }
 
+// triggerTVDBRefresh updates every series' episode numbering from TheTVDB, in the
+// background, with per-series progress in the task detail.
+func (h *Handler) triggerTVDBRefresh(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Catalog == nil {
+		h.writeError(w, http.StatusServiceUnavailable, "unavailable", "catalog not wired")
+		return
+	}
+	if h.deps.Tasks != nil {
+		h.deps.Tasks.Enqueue("refresh", "Refresh from TVDB", func(ctx context.Context, run *task.Run) error {
+			return h.deps.Catalog.RefreshAllFromTVDB(ctx, func(line string) { run.Detail(line) })
+		})
+	} else {
+		go func() { _ = h.deps.Catalog.RefreshAllFromTVDB(context.Background(), nil) }()
+	}
+	h.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
+}
+
 // triggerLibraryRefresh reconciles the TorBox/WebDAV mount and re-runs the Plex
 // stream check, in the background.
 func (h *Handler) triggerLibraryRefresh(w http.ResponseWriter, r *http.Request) {

@@ -125,6 +125,11 @@ func (s *Service) AddSeries(ctx context.Context, tmdbID int64, monitored bool, m
 	if err := s.syncSeasons(ctx, sr, d.Seasons, monitoredSeasons == nil, monSet); err != nil {
 		return nil, err
 	}
+	// Best-effort: pull authoritative scene/absolute numbering from TheTVDB so the
+	// anime search uses real data from the start (no-op without a TVDB key/id).
+	if _, err := s.refreshSeriesFromTVDB(ctx, sr); err != nil {
+		s.logSearchErr("tvdb refresh "+sr.Title, err)
+	}
 	return sr, nil
 }
 

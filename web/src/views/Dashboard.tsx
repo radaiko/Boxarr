@@ -77,6 +77,9 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
         <button className="btn btn-sm" onClick={() => void run('/upgrade/search', 'Upgrade search')}>
           <Icon name="refresh" /> Search upgrades
         </button>
+        <button className="btn btn-sm" onClick={() => void run('/tvdb/refresh', 'TVDB refresh')}>
+          <Icon name="refresh" /> Refresh from TVDB
+        </button>
       </div>
       <div className="stat-grid">
         <StatCard label="Library" value={`${c.movies + c.series + c.anime}`}

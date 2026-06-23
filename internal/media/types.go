@@ -69,6 +69,8 @@ type Episode struct {
 	SeasonNumber   int
 	EpisodeNumber  int
 	AbsoluteNumber int // 0 = none
+	SceneSeason    int // broadcast/scene season from TVDB (0 = not set)
+	SceneEpisode   int // broadcast/scene episode from TVDB (0 = not set)
 	TMDBID         int64
 	TVDBID         int64
 	Title          string

@@ -103,6 +103,7 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/upgrade/search", h.triggerUpgradeSearch)
 	r.Post("/search/missing", h.triggerSearchMissing)
 	r.Post("/library/refresh", h.triggerLibraryRefresh)
+	r.Post("/tvdb/refresh", h.triggerTVDBRefresh)
 	r.Get("/releases/languages", h.releaseLanguages)
 	r.Get("/logs", h.logs)
 	r.Get("/movies", h.listMovies)
@@ -251,6 +252,12 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusInternalServerError, "internal", "persisting settings")
 			return
 		}
+	}
+	// Adding/changing a TVDB key refreshes series/anime numbering from TheTVDB.
+	if v, ok := body.Settings[settings.KeyTVDBAPIKey]; ok && v != "" && h.deps.Catalog != nil && h.deps.Tasks != nil {
+		h.deps.Tasks.Enqueue("refresh", "Refresh from TVDB", func(ctx context.Context, run *task.Run) error {
+			return h.deps.Catalog.RefreshAllFromTVDB(ctx, func(line string) { run.Detail(line) })
+		})
 	}
 	h.getSettings(w, r)
 }

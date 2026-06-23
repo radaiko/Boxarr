@@ -27,9 +27,28 @@ type sceneNum struct {
 // cour/season is months later, so 45 days cleanly separates them.
 const sceneSeasonGap = 45 * 24 * time.Hour
 
-// sceneNumbers derives scene (season, episode, absolute) for every episode from
-// air-date order, splitting a new scene season at each large air-date gap.
+// sceneNumbers derives scene (season, episode, absolute) for every episode. If
+// TheTVDB has populated authoritative scene numbers (scene_season > 0) we trust
+// them; otherwise we fall back to deriving them from air-date gaps.
 func sceneNumbers(eps []*media.Episode) map[int64]sceneNum {
+	hasTVDB := false
+	for _, e := range eps {
+		if e.SceneSeason > 0 {
+			hasTVDB = true
+			break
+		}
+	}
+	if hasTVDB {
+		out := make(map[int64]sceneNum, len(eps))
+		for _, e := range eps {
+			if e.SceneSeason > 0 {
+				out[e.ID] = sceneNum{season: e.SceneSeason, episode: e.SceneEpisode, absolute: e.AbsoluteNumber}
+			} else {
+				out[e.ID] = sceneNum{season: e.SeasonNumber, episode: e.EpisodeNumber, absolute: e.AbsoluteNumber}
+			}
+		}
+		return out
+	}
 	ordered := append([]*media.Episode(nil), eps...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		a, b := ordered[i], ordered[j]

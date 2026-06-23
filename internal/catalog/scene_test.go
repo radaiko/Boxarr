@@ -63,3 +63,26 @@ func TestEpisodeMatchesAndQueries(t *testing.T) {
 		}
 	}
 }
+
+func TestSceneNumbersPrefersTVDB(t *testing.T) {
+	eps := soloLeveling()
+	// Simulate a TVDB refresh: E13 -> scene S02E01 abs 13, E25 -> scene S02E13 abs 25.
+	for _, e := range eps {
+		if e.EpisodeNumber >= 13 {
+			e.SceneSeason = 2
+			e.SceneEpisode = e.EpisodeNumber - 12
+			e.AbsoluteNumber = e.EpisodeNumber
+		} else {
+			e.SceneSeason = 1
+			e.SceneEpisode = e.EpisodeNumber
+			e.AbsoluteNumber = e.EpisodeNumber
+		}
+	}
+	sc := sceneNumbers(eps)
+	if got := sc[25]; got.season != 2 || got.episode != 13 || got.absolute != 25 {
+		t.Errorf("E25 from TVDB: got S%02dE%02d abs%d, want S02E13 abs25", got.season, got.episode, got.absolute)
+	}
+	if got := sc[13]; got.season != 2 || got.episode != 1 {
+		t.Errorf("E13 from TVDB: got S%02dE%02d, want S02E01", got.season, got.episode)
+	}
+}
