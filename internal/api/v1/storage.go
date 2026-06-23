@@ -142,7 +142,10 @@ var titleNormRe = regexp.MustCompile(`[^a-z0-9]+`)
 // punctuation stripped and whitespace collapsed — so a parsed release title like
 // "Avengers Endgame" matches the catalog's "Avengers: Endgame".
 func normTitle(s string) string {
-	return strings.TrimSpace(titleNormRe.ReplaceAllString(strings.ToLower(s), " "))
+	// Normalize "&" to "and" so a release named "Fast.and.Furious.6" matches the
+	// catalog "Fast & Furious 6".
+	s = strings.ReplaceAll(strings.ToLower(s), "&", " and ")
+	return strings.TrimSpace(titleNormRe.ReplaceAllString(s, " "))
 }
 
 // refreshWebDAV triggers an out-of-band reconcile sweep (FR-WD-3) so the mount
@@ -376,28 +379,30 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		dto := toWebDAVDTO(it)
-		// Tracked items keep their known status (set by the reconciler/adopt); we
-		// only enrich them with the catalog's real type + poster + jump link.
-		// Resolve by title first, then fall back to the linked job's media so an
-		// item whose parsed folder title differs from the catalog title still links.
-		if it.Known {
-			c, ok := byTitle[normTitle(dto.Title)]
-			if !ok && dto.JobID != 0 {
-				if jm, has := jobMedia[dto.JobID]; has {
-					switch jm.MediaType {
-					case "movie":
-						c, ok = movieByID[jm.MediaRef]
-					case "series", "season":
-						c, ok = seriesByID[jm.MediaRef]
-					}
+		// Resolve the item against the library by title first, then by the linked
+		// job's media. A match means this folder IS a tracked item, so mark it
+		// known + enrich it (poster/type/jump link). Deriving "known" from the
+		// catalog — not only the reconciler/adopt DB flag — keeps adopted items
+		// tracked even after an rclone re-list recreates the row and clears the
+		// flag (there is no job for the reconciler to re-match them by). This only
+		// upgrades unknown→known on a real match; it never downgrades.
+		c, ok := byTitle[normTitle(dto.Title)]
+		if !ok && dto.JobID != 0 {
+			if jm, has := jobMedia[dto.JobID]; has {
+				switch jm.MediaType {
+				case "movie":
+					c, ok = movieByID[jm.MediaRef]
+				case "series", "season":
+					c, ok = seriesByID[jm.MediaRef]
 				}
 			}
-			if ok {
-				dto.PosterPath = c.poster
-				dto.CatalogID = c.id
-				if c.kind != "" {
-					dto.Kind = c.kind
-				}
+		}
+		if ok {
+			dto.Known = true
+			dto.PosterPath = c.poster
+			dto.CatalogID = c.id
+			if c.kind != "" {
+				dto.Kind = c.kind
 			}
 		}
 		out = append(out, dto)

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/notify"
@@ -43,6 +45,11 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 		}
 		byName[j.NZBName] = j
 	}
+
+	// Library titles: a folder whose parsed title matches a catalog item is
+	// tracked even when no job matches it (adopted items have no job; import jobs
+	// get reaped). This keeps "known" durable instead of flipping to unknown.
+	lib := w.libraryTitleSet(ctx)
 
 	// Tombstones: paths deleted on TorBox that a stale rclone cache may still
 	// list. Skip re-adding them; track which we still see so we can clear the
@@ -83,6 +90,9 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 				item.Category = categoryOf(j.MediaType)
 			} else {
 				item.Category = guessCategory(name)
+				if p, perr := release.ParseRelease(name); perr == nil && p != nil && lib[normTitleKey(p.Title)] {
+					item.Known = true // a library item by this title — tracked, just no live job
+				}
 			}
 			if err := w.store.UpsertWebDAVItem(ctx, item); err != nil {
 				w.logger.Error("reconcile: upserting webdav item", "name", name, "error", err)
@@ -190,4 +200,30 @@ func dirSize(dir string) int64 {
 		return nil
 	})
 	return total
+}
+
+var reTitleNorm = regexp.MustCompile(`[^a-z0-9]+`)
+
+// normTitleKey normalizes a title for matching (mirrors the API's normTitle):
+// lower-case, "&"→"and", non-alphanumeric runs → single space.
+func normTitleKey(s string) string {
+	s = strings.ReplaceAll(strings.ToLower(s), "&", " and ")
+	return strings.TrimSpace(reTitleNorm.ReplaceAllString(s, " "))
+}
+
+// libraryTitleSet returns the normalized titles of every catalog movie + series,
+// so the reconciler can recognize a mount folder as tracked by title alone.
+func (w *Workers) libraryTitleSet(ctx context.Context) map[string]bool {
+	out := map[string]bool{}
+	if movies, err := w.store.ListMovies(ctx); err == nil {
+		for _, m := range movies {
+			out[normTitleKey(m.Title)] = true
+		}
+	}
+	if series, err := w.store.ListSeries(ctx); err == nil {
+		for _, s := range series {
+			out[normTitleKey(s.Title)] = true
+		}
+	}
+	return out
 }

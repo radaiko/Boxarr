@@ -34,7 +34,11 @@ func (s *Store) UpsertWebDAVItem(ctx context.Context, w *webdav.WebDAVItem) erro
 		 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		 ON CONFLICT(remote_path) DO UPDATE SET
 		   name=excluded.name, size=excluded.size, category=excluded.category,
-		   known=excluded.known, job_id=excluded.job_id, is_broken=0,
+		   -- Sticky tracking: never downgrade a known item or drop its job link on a
+		   -- later sweep that didn't match it (jobs get reaped; adopted items have
+		   -- none). Only ever upgrade known→true / fill in a missing job id.
+		   known=(webdav_item.known OR excluded.known),
+		   job_id=COALESCE(excluded.job_id, webdav_item.job_id), is_broken=0,
 		   last_seen=CURRENT_TIMESTAMP`,
 		w.Name, w.RemotePath, w.Size, w.Category, b2i(w.Known), nullInt(w.JobID), b2i(w.IsBroken))
 	if err != nil {
