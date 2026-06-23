@@ -297,6 +297,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .dash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .lang-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 16px; }
 
+/* ── Failed-grab surfaces ── */
+.fail-box { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: #251119; border: 1px solid #5a2330; color: #ffb3b3; border-radius: 8px;
+  padding: 10px 14px; margin: 12px 0; font-size: 13px; }
+.fail-box b { color: #ffd0d0; }
+.ep-fail { color: #ff8b8b; font-size: 12px; margin-top: 3px; }
+
 /* ── Alert banner (TorBox/API failures) ── */
 .alert-banner { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   background: #2a0f0f; border: 1px solid #7a2222; color: #ff9b9b; border-radius: 10px;

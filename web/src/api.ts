@@ -83,6 +83,7 @@ export interface Movie {
   status: string
   hasFile: boolean
   langMissing?: boolean
+  lastError?: string
   posterPath?: string
   overview?: string
   libraryPath?: string
@@ -170,6 +171,7 @@ export interface Episode {
   monitored: boolean
   hasFile: boolean
   langMissing?: boolean
+  lastError?: string
   file?: FileMeta
   lastSearched?: string
 }

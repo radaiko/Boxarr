@@ -78,7 +78,7 @@ func TestReconcileUpsertsAndFlagsUnknown(t *testing.T) {
 	}
 }
 
-func TestGrabFailedNotifiesAndReturnsToWanted(t *testing.T) {
+func TestGrabFailedNotifiesAndMarksFailed(t *testing.T) {
 	fake := &fakeTorBox{}
 	w, st, _ := testWorkers(t, fake)
 	ctx := context.Background()
@@ -99,8 +99,8 @@ func TestGrabFailedNotifiesAndReturnsToWanted(t *testing.T) {
 	if got.State != job.StateFailed {
 		t.Fatalf("job should be failed, got %s", got.State)
 	}
-	if m, _ := st.GetMovie(ctx, mid); m.Status != media.MediaWanted {
-		t.Errorf("failed grab should return movie to wanted, got %s", m.Status)
+	if m, _ := st.GetMovie(ctx, mid); m.Status != media.MediaFailed {
+		t.Errorf("failed grab should mark movie failed (not silently retry), got %s", m.Status)
 	}
 	notes, _ := st.ListNotifications(ctx, false, 50)
 	found := false

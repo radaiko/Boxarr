@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -23,6 +24,7 @@ type movieDTO struct {
 	Status              string    `json:"status"`
 	HasFile             bool      `json:"hasFile"`
 	LangMissing         bool      `json:"langMissing,omitempty"`
+	LastError           string    `json:"lastError,omitempty"` // failure reason when status=failed
 	MinimumAvailability string    `json:"minimumAvailability"`
 	ReleaseDate         string    `json:"releaseDate,omitempty"`
 	Runtime             int       `json:"runtime,omitempty"`
@@ -55,9 +57,24 @@ func (h *Handler) listMovies(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]movieDTO, 0, len(movies))
 	for _, m := range movies {
-		items = append(items, toMovieDTO(m))
+		dto := toMovieDTO(m)
+		if m.Status == media.MediaFailed {
+			dto.LastError = h.failReason(r.Context(), m.JobID)
+		}
+		items = append(items, dto)
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+// failReason returns the linked job's failure message (shown for failed items).
+func (h *Handler) failReason(ctx context.Context, jobID int64) string {
+	if jobID == 0 {
+		return ""
+	}
+	if j, err := h.deps.Store.GetJob(ctx, jobID); err == nil && j != nil {
+		return j.FailMessage
+	}
+	return ""
 }
 
 func (h *Handler) getMovie(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +89,34 @@ func (h *Handler) getMovie(w http.ResponseWriter, r *http.Request) {
 	}
 	dto := toMovieDTO(m)
 	dto.File = fileMetaFor(h.symlinkTargets(r.Context()), m.LibraryPath)
+	if m.Status == media.MediaFailed {
+		dto.LastError = h.failReason(r.Context(), m.JobID)
+	}
 	h.writeJSON(w, http.StatusOK, dto)
+}
+
+// resetMovie clears a failed grab: deletes the failed job, returns the movie to
+// wanted, and kicks off a fresh search so it can re-grab a different release.
+func (h *Handler) resetMovie(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.idParam(w, r)
+	if !ok {
+		return
+	}
+	m, err := h.deps.Store.GetMovie(r.Context(), id)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "not_found", "movie not found")
+		return
+	}
+	if m.JobID != 0 && h.deps.Deleter != nil {
+		h.deps.Deleter.DeleteDownloads(r.Context(), []int64{m.JobID}, func(int, int, string) {})
+	}
+	_ = h.deps.Store.SetMovieStatus(r.Context(), id, media.MediaWanted)
+	if h.deps.Catalog != nil {
+		h.runBackground("search", "Retry "+m.Title, func(ctx context.Context) error {
+			return h.deps.Catalog.SearchWantedForMovie(ctx, id)
+		})
+	}
+	h.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 }
 
 func (h *Handler) lookupMovies(w http.ResponseWriter, r *http.Request) {

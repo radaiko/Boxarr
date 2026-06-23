@@ -24,6 +24,19 @@ export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) 
       setReleases(r.items)
     } catch (e) { setMsg(String(e)); setMsgOk(false); setSearchOpen(false) } finally { setBusy(false) }
   }
+  async function reset() {
+    setBusy(true)
+    try {
+      await postJSON(`/movies/${id}/reset`, {})
+      toast('Reset — re-searching for a working release.', 'ok')
+      reload()
+    } catch (e) {
+      toast('Reset failed: ' + String(e), 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function grab(rel: Release) {
     setSearchOpen(false)
     setMsg(`Grabbing ${rel.title}…`); setMsgOk(false)
@@ -57,6 +70,14 @@ export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) 
             <Status value={movie.status} hasFile={movie.hasFile} />
           </div>
           {movie.overview && <p className="overview">{movie.overview}</p>}
+          {movie.status === 'failed' && (
+            <div className="fail-box">
+              <span><b>Download failed.</b> {movie.lastError || 'The grab failed on TorBox.'}</span>
+              <button className="btn btn-sm" onClick={() => void reset()} disabled={busy}>
+                <Icon name="refresh" /> Retry
+              </button>
+            </div>
+          )}
           {movie.file && <FilePanel file={movie.file} />}
           <div className="topbar-actions" style={{ justifyContent: 'flex-start' }}>
             <button className="btn btn-primary" onClick={() => void search()} disabled={busy}>

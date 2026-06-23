@@ -18,6 +18,7 @@ const (
 	MediaAvailable   MediaStatus = "available"      // imported; library symlink present
 	MediaMissing     MediaStatus = "missing"        // monitored but not yet eligible, or unmonitored
 	MediaExpired     MediaStatus = "expired_broken" // was available; WebDAV target gone (heal candidate)
+	MediaFailed      MediaStatus = "failed"         // last grab failed on TorBox; awaits manual reset/retry
 )
 
 // Series is a monitored TV show.

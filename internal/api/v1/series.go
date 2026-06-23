@@ -50,6 +50,7 @@ type episodeDTO struct {
 	Monitored     bool      `json:"monitored"`
 	HasFile       bool      `json:"hasFile"`
 	LangMissing   bool      `json:"langMissing,omitempty"`
+	LastError     string    `json:"lastError,omitempty"` // failure reason when status=failed
 	File          *fileMeta `json:"file,omitempty"`
 	LastSearched  string    `json:"lastSearched,omitempty"`
 }
@@ -122,12 +123,16 @@ func (h *Handler) getSeries(w http.ResponseWriter, r *http.Request) {
 	targets := h.symlinkTargets(ctx)
 	bySeason := map[int][]episodeDTO{}
 	for _, e := range episodes {
-		bySeason[e.SeasonNumber] = append(bySeason[e.SeasonNumber], episodeDTO{
+		ed := episodeDTO{
 			ID: e.ID, SeasonNumber: e.SeasonNumber, EpisodeNumber: e.EpisodeNumber, Title: e.Title,
 			AirDate: e.AirDate, Status: string(e.Status), Monitored: e.Monitored, HasFile: e.HasFile,
 			LangMissing: e.LangMissing,
 			File:        fileMetaFor(targets, e.LibraryPath), LastSearched: rfc3339ptr(e.LastSearchedAt),
-		})
+		}
+		if e.Status == media.MediaFailed {
+			ed.LastError = h.failReason(ctx, e.JobID)
+		}
+		bySeason[e.SeasonNumber] = append(bySeason[e.SeasonNumber], ed)
 	}
 	dto := seriesDTO{
 		ID: s.ID, TMDBID: s.TMDBID, TVDBID: s.TVDBID, Title: s.Title, Year: s.Year,
@@ -287,6 +292,36 @@ func (h *Handler) setSeasonMonitored(w http.ResponseWriter, r *http.Request) {
 }
 
 // setEpisodeMonitored toggles one episode's monitored flag.
+// resetEpisode clears a failed episode grab: deletes the failed job, returns it
+// to wanted, and re-searches the series so it can re-grab a different release.
+func (h *Handler) resetEpisode(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.idParam(w, r); !ok {
+		return
+	}
+	epID, err := strconv.ParseInt(chi.URLParam(r, "episodeId"), 10, 64)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "invalid episode id")
+		return
+	}
+	ctx := r.Context()
+	ep, err := h.deps.Store.GetEpisode(ctx, epID)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "not_found", "episode not found")
+		return
+	}
+	if ep.JobID != 0 && h.deps.Deleter != nil {
+		h.deps.Deleter.DeleteDownloads(ctx, []int64{ep.JobID}, func(int, int, string) {})
+	}
+	_ = h.deps.Store.SetEpisodeStatus(ctx, epID, media.MediaWanted)
+	if h.deps.Catalog != nil {
+		sid := ep.SeriesID
+		h.runBackground("search", "Retry episode", func(ctx context.Context) error {
+			return h.deps.Catalog.SearchWantedForSeries(ctx, sid)
+		})
+	}
+	h.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
+}
+
 func (h *Handler) setEpisodeMonitored(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.idParam(w, r); !ok {
 		return

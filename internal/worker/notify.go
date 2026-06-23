@@ -32,16 +32,17 @@ func (w *Workers) notifyEvent(ctx context.Context, eventType string, j *job.Job,
 	}
 }
 
-// onGrabFailed emits a grab_failed notification and returns the linked media
-// item to `wanted` so it can be re-searched (FR-GP-7).
+// onGrabFailed emits a grab_failed notification and marks the linked media item
+// `failed` (FR-GP-7). It is intentionally NOT returned to `wanted`: auto-retry
+// would just re-grab the same broken release in a loop. The item shows the
+// failure reason (from the job) and waits for a manual reset/retry, which the
+// failed status keeps out of the auto-search query (WantedMovies/WantedEpisodes).
 func (w *Workers) onGrabFailed(ctx context.Context, j *job.Job) {
 	w.notifyEvent(ctx, "grab_failed", j, nil)
 	switch j.MediaType {
 	case "movie":
-		if m, err := w.store.GetMovie(ctx, j.MediaRef); err == nil {
-			_ = w.store.SetMovieStatus(ctx, m.ID, media.MediaWanted)
-		}
+		_ = w.store.SetMovieStatus(ctx, j.MediaRef, media.MediaFailed)
 	case "episode":
-		_ = w.store.SetEpisodeStatus(ctx, j.MediaRef, media.MediaWanted)
+		_ = w.store.SetEpisodeStatus(ctx, j.MediaRef, media.MediaFailed)
 	}
 }

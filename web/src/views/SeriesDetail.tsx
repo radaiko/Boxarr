@@ -33,6 +33,15 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
   }
   const searchEpisode = (ep: Episode) =>
     runSearch(`/series/${id}/episodes/${ep.id}/search`, `episode:${ep.id}`, `S${pad(ep.seasonNumber)}E${pad(ep.episodeNumber)}`, ep.file?.name)
+  async function resetEpisode(ep: Episode) {
+    try {
+      await postJSON(`/series/${id}/episodes/${ep.id}/reset`, {})
+      toast('Reset — re-searching for a working release.', 'ok')
+      reload()
+    } catch (e) {
+      toast('Reset failed: ' + String(e), 'err')
+    }
+  }
   const searchSeason = (n: number) =>
     runSearch(`/series/${id}/seasons/${n}/search`, `season:${n}`, `Season ${n}`)
 
@@ -113,6 +122,9 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
                     <td>
                       {ep.title || '—'}
                       {ep.langMissing && <span className="status broken" title="No German/English audio or subtitles — searching for a better release" style={{ marginLeft: 8 }}>lang?</span>}
+                      {ep.status === 'failed' && (
+                        <div className="ep-fail" title={ep.lastError}>⚠ {ep.lastError || 'Download failed on TorBox'}</div>
+                      )}
                       {ep.file && (
                         <div className="ep-file">
                           <span className="ep-file-name" title={ep.file.path || ep.file.name}>{ep.file.name}</span>
@@ -124,7 +136,9 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
                     <td className="muted" style={{ width: 120, fontSize: 11.5 }}>{ep.lastSearched ? `searched ${ago(ep.lastSearched)}` : ''}</td>
                     <td style={{ width: 130 }}><Status value={ep.status} hasFile={ep.hasFile} /></td>
                     <td className="right" style={{ width: 110 }}>
-                      <button className="btn btn-sm btn-ghost" onClick={() => void searchEpisode(ep)}><Icon name="search" /> Search</button>
+                      {ep.status === 'failed'
+                        ? <button className="btn btn-sm" onClick={() => void resetEpisode(ep)}><Icon name="refresh" /> Retry</button>
+                        : <button className="btn btn-sm btn-ghost" onClick={() => void searchEpisode(ep)}><Icon name="search" /> Search</button>}
                     </td>
                   </tr>
                 ))}
