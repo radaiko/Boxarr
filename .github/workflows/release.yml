@@ -20,11 +20,12 @@ on:
         required: true
         default: '0.0.1-dev'
 
-# Serialize release builds so a main-push and its tag-push don't build the same
-# multi-arch image concurrently (which contends on Docker Hub / the buildx cache).
+# Group per ref: a newer main push cancels the older in-progress main build (no
+# point publishing a stale :latest), while each tag has its own group so tag
+# builds run immediately instead of queuing behind the same-commit main build.
 concurrency:
-  group: release
-  cancel-in-progress: false
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   publish:
