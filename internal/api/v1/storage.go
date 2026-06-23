@@ -144,6 +144,18 @@ var titleNormRe = regexp.MustCompile(`[^a-z0-9]+`)
 // normTitle normalizes a title for fuzzy catalog matching: lowercased, with
 // punctuation stripped and whitespace collapsed — so a parsed release title like
 // "Avengers Endgame" matches the catalog's "Avengers: Endgame".
+// folderHasSymlinkTarget reports whether any imported library symlink points to a
+// file inside remotePath (the mount folder) — proof the folder backs a tracked item.
+func folderHasSymlinkTarget(remotePath string, syms []*job.ImportedSymlink) bool {
+	prefix := strings.TrimRight(remotePath, "/") + "/"
+	for _, s := range syms {
+		if s.TargetPath == remotePath || strings.HasPrefix(s.TargetPath, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func normTitle(s string) string {
 	// Normalize "&" to "and" so a release named "Fast.and.Furious.6" matches the
 	// catalog "Fast & Furious 6".
@@ -372,6 +384,10 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 	}
 	byTitle, movieByID, seriesByID := h.catalogIndex(r.Context())
 	jobMedia, _ := h.deps.Store.JobMediaIndex(r.Context())
+	// Imported-symlink targets are a durable, language-independent link from the
+	// library to the exact mount folder backing it — so a German-titled folder
+	// (which can't title-match its English catalog entry) is still recognized.
+	symTargets, _ := h.deps.Store.ListImportedSymlinks(r.Context())
 	cat := r.URL.Query().Get("category")
 	out := make([]webdavItemDTO, 0, len(items))
 	for _, it := range items {
@@ -407,6 +423,10 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 			if c.kind != "" {
 				dto.Kind = c.kind
 			}
+		}
+		// Last resort: a library symlink targets a file inside this folder → tracked.
+		if !dto.Known && folderHasSymlinkTarget(it.RemotePath, symTargets) {
+			dto.Known = true
 		}
 		out = append(out, dto)
 	}

@@ -41,18 +41,21 @@ type seasonDTO struct {
 }
 
 type episodeDTO struct {
-	ID            int64     `json:"id"`
-	SeasonNumber  int       `json:"seasonNumber"`
-	EpisodeNumber int       `json:"episodeNumber"`
-	Title         string    `json:"title"`
-	AirDate       string    `json:"airDate,omitempty"`
-	Status        string    `json:"status"`
-	Monitored     bool      `json:"monitored"`
-	HasFile       bool      `json:"hasFile"`
-	LangMissing   bool      `json:"langMissing,omitempty"`
-	LastError     string    `json:"lastError,omitempty"` // failure reason when status=failed
-	File          *fileMeta `json:"file,omitempty"`
-	LastSearched  string    `json:"lastSearched,omitempty"`
+	ID             int64     `json:"id"`
+	SeasonNumber   int       `json:"seasonNumber"`
+	EpisodeNumber  int       `json:"episodeNumber"`
+	Title          string    `json:"title"`
+	AirDate        string    `json:"airDate,omitempty"`
+	Status         string    `json:"status"`
+	Monitored      bool      `json:"monitored"`
+	HasFile        bool      `json:"hasFile"`
+	LangMissing    bool      `json:"langMissing,omitempty"`
+	LastError      string    `json:"lastError,omitempty"` // failure reason when status=failed
+	AbsoluteNumber int       `json:"absoluteNumber,omitempty"`
+	SceneSeason    int       `json:"sceneSeason,omitempty"` // TVDB scene season (0 = from air-date heuristic)
+	SceneEpisode   int       `json:"sceneEpisode,omitempty"`
+	File           *fileMeta `json:"file,omitempty"`
+	LastSearched   string    `json:"lastSearched,omitempty"`
 }
 
 func seriesRollup(seasons []seasonDTO) string {
@@ -126,8 +129,9 @@ func (h *Handler) getSeries(w http.ResponseWriter, r *http.Request) {
 		ed := episodeDTO{
 			ID: e.ID, SeasonNumber: e.SeasonNumber, EpisodeNumber: e.EpisodeNumber, Title: e.Title,
 			AirDate: e.AirDate, Status: string(e.Status), Monitored: e.Monitored, HasFile: e.HasFile,
-			LangMissing: e.LangMissing,
-			File:        fileMetaFor(targets, e.LibraryPath), LastSearched: rfc3339ptr(e.LastSearchedAt),
+			LangMissing:    e.LangMissing,
+			AbsoluteNumber: e.AbsoluteNumber, SceneSeason: e.SceneSeason, SceneEpisode: e.SceneEpisode,
+			File: fileMetaFor(targets, e.LibraryPath), LastSearched: rfc3339ptr(e.LastSearchedAt),
 		}
 		if e.Status == media.MediaFailed {
 			ed.LastError = h.failReason(ctx, e.JobID)

@@ -50,6 +50,10 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 	// tracked even when no job matches it (adopted items have no job; import jobs
 	// get reaped). This keeps "known" durable instead of flipping to unknown.
 	lib := w.libraryTitleSet(ctx)
+	// Imported-symlink targets: a durable, language-independent link — a folder a
+	// library symlink points into is tracked even if its title can't be matched
+	// (e.g. a German-titled release of an English-catalog movie).
+	syms, _ := w.store.ListImportedSymlinks(ctx)
 
 	// Tombstones: paths deleted on TorBox that a stale rclone cache may still
 	// list. Skip re-adding them; track which we still see so we can clear the
@@ -92,6 +96,8 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 				item.Category = guessCategory(name)
 				if p, perr := release.ParseRelease(name); perr == nil && p != nil && lib[normTitleKey(p.Title)] {
 					item.Known = true // a library item by this title — tracked, just no live job
+				} else if folderHasSymlinkTarget(remotePath, syms) {
+					item.Known = true // a library symlink points into this folder — tracked
 				}
 			}
 			if err := w.store.UpsertWebDAVItem(ctx, item); err != nil {
@@ -200,6 +206,18 @@ func dirSize(dir string) int64 {
 		return nil
 	})
 	return total
+}
+
+// folderHasSymlinkTarget reports whether any imported library symlink targets a
+// file inside remotePath — proof the mount folder backs a tracked library item.
+func folderHasSymlinkTarget(remotePath string, syms []*job.ImportedSymlink) bool {
+	prefix := strings.TrimRight(remotePath, "/") + "/"
+	for _, s := range syms {
+		if s.TargetPath == remotePath || strings.HasPrefix(s.TargetPath, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 var reTitleNorm = regexp.MustCompile(`[^a-z0-9]+`)
