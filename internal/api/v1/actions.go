@@ -35,7 +35,7 @@ func (h *Handler) triggerUpgradeSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.runBackground("upgrade", "Search for upgrades", func(ctx context.Context) error {
-		return h.deps.Catalog.UpgradeWanted(ctx)
+		return h.deps.Catalog.UpgradeNow(ctx) // manual = force, ignore the per-item cadence
 	})
 	h.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 }

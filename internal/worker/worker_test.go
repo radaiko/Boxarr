@@ -645,7 +645,7 @@ func TestReaperRemovesOldImported(t *testing.T) {
 	id, _ := st.CreateJob(ctx, &job.Job{State: job.StateImported, Category: "sonarr", NZBName: "Old"})
 	if _, err := st.Exec(ctx,
 		`UPDATE jobs SET updated_at = ? WHERE id = ?`,
-		time.Now().Add(-48*time.Hour), id); err != nil {
+		time.Now().Add(-31*24*time.Hour), id); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.reapOnce(ctx); err != nil {

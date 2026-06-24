@@ -12,7 +12,9 @@ import (
 )
 
 // importedTTL is how long an imported job is kept before the reaper drops it.
-const importedTTL = 24 * time.Hour
+// Kept generous so the job stays available for upgrade supersede-cleanup and
+// mount tracking well past import (the upgrade itself no longer depends on it).
+const importedTTL = 30 * 24 * time.Hour
 
 // reapOnce deletes imported jobs older than importedTTL (a safety net for
 // downloads Sonarr never deleted via the SAB API) and, in symlink mode,

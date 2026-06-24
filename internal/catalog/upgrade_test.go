@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/radaiko/boxarr/internal/selection"
 )
@@ -80,5 +81,35 @@ func TestShouldGrabUpgrade(t *testing.T) {
 	de := "Solo.Leveling.S01E13.1080p.German.DL-GRP"
 	if cat.shouldGrabUpgrade(cfg, ideal, de, de, false) {
 		t.Error("non-missing: equal release is not an upgrade")
+	}
+}
+
+func TestUpgradeDue(t *testing.T) {
+	cat, _, _ := newCatalog(t, selCfg())
+	now := time.Now()
+	recent := now.Add(-2 * time.Hour)
+	old2024 := "2024-01-01"
+
+	// force always re-searches.
+	if !cat.upgradeDue(old2024, &recent, now, false, true) {
+		t.Error("force must always be due")
+	}
+	// lang_missing on an old release: retries on the daily interval (due after 2h<1d? no) —
+	// recently searched (2h ago) is NOT yet due on a daily cadence.
+	if cat.upgradeDue(old2024, &recent, now, true, false) {
+		t.Error("lang_missing searched 2h ago should not be due yet (daily cadence)")
+	}
+	// lang_missing searched 2 days ago: due (daily cadence), even though the release
+	// is >1yr old (which on the normal slow cadence would NOT be due).
+	twoDaysAgo := now.Add(-48 * time.Hour)
+	if !cat.upgradeDue(old2024, &twoDaysAgo, now, true, false) {
+		t.Error("lang_missing searched 2d ago should be due on the daily cadence")
+	}
+	if cat.upgradeDue(old2024, &twoDaysAgo, now, false, false) {
+		t.Error("non-lang_missing old release searched 2d ago should NOT be due (slow cadence)")
+	}
+	// never searched → due.
+	if !cat.upgradeDue(old2024, nil, now, true, false) {
+		t.Error("never-searched lang_missing should be due")
 	}
 }
