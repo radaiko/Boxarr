@@ -86,7 +86,7 @@ func (h *Handler) grabRelease(ctx context.Context, ref grabRef, mediaType string
 			// Fetch the .torrent; if that's forbidden/unavailable (some indexers 403
 			// the direct download), fall back to an infohash magnet — TorBox resolves
 			// a torrent by its hash (cached or via DHT) without the .torrent file.
-			if b, err := fetchArtifact(ctx, ref.DownloadURL); err == nil {
+			if b, err := h.fetchArtifact(ctx, ref.DownloadURL); err == nil {
 				j.TorrentFile = b
 			} else if hash != "" {
 				j.TorrentMagnet = magnetFromHash(hash)
@@ -110,7 +110,7 @@ func (h *Handler) grabRelease(ctx context.Context, ref grabRef, mediaType string
 	if ref.DownloadURL == "" {
 		return nil, false, fmt.Errorf("usenet release has no download URL")
 	}
-	b, err := fetchArtifact(ctx, ref.DownloadURL)
+	b, err := h.fetchArtifact(ctx, ref.DownloadURL)
 	if err != nil {
 		return nil, false, fmt.Errorf("fetching .nzb: %w", err)
 	}
@@ -136,18 +136,34 @@ func (h *Handler) grabRelease(ctx context.Context, ref grabRef, mediaType string
 // resolves it via its cache/DHT, so we don't need the .torrent file.
 func magnetFromHash(hash string) string { return "magnet:?xt=urn:btih:" + hash }
 
-func fetchArtifact(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (h *Handler) fetchArtifact(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
+	}
+	// When the download URL points at Prowlarr, authenticate: Prowlarr's /download
+	// proxy requires the API key, and the URL doesn't always embed it — a plain GET
+	// then 403s. Harmless on non-Prowlarr URLs.
+	if base := strings.TrimRight(h.deps.Settings.ProwlarrURL(), "/"); base != "" && strings.HasPrefix(rawURL, base) {
+		req.Header.Set("X-Api-Key", h.deps.Settings.ProwlarrAPIKey())
 	}
 	resp, err := grabHTTP.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if resp.StatusCode >= 400 {
+		// Surface the upstream message (Prowlarr/the indexer says why — bad key, VIP
+		// required, link expired) instead of just the status code.
+		msg := strings.TrimSpace(string(body))
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		if msg != "" {
+			return nil, fmt.Errorf("status %d: %s", resp.StatusCode, msg)
+		}
 		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	return body, nil
 }
