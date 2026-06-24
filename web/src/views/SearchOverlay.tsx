@@ -20,7 +20,9 @@ export function SearchOverlay({ title, releases, currentName, onGrab, onClose, b
   const [lang, setLang] = useState('')
   const [subsOnly, setSubsOnly] = useState(false)
   const [cachedOnly, setCachedOnly] = useState(false)
-  const [hideRejected, setHideRejected] = useState(true)
+  // Show everything by default in a manual search — rejected releases are dimmed +
+  // sorted last, but the user is here to see and pick from ALL Prowlarr results.
+  const [hideRejected, setHideRejected] = useState(false)
 
   const resolutions = useMemo(() => uniq(releases.map((r) => r.resolution).filter(Boolean) as string[]), [releases])
   const langs = useMemo(() => uniq(releases.flatMap((r) => r.languages ?? [])), [releases])

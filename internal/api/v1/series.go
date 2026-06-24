@@ -532,6 +532,8 @@ func (h *Handler) grabSeries(w http.ResponseWriter, r *http.Request) {
 	}
 	j, deduped, err := h.grabRelease(ctx, ref, mediaType, mediaRef)
 	if err != nil {
+		h.deps.Logger.Warn("grab failed", "scope", body.Scope, "seriesId", id, "episodeId", body.EpisodeID,
+			"release", ref.Title, "protocol", ref.Protocol, "error", err.Error())
 		h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 		return
 	}

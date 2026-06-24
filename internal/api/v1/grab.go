@@ -44,6 +44,7 @@ func (h *Handler) grabMovie(w http.ResponseWriter, r *http.Request) {
 
 	j, deduped, err := h.grabRelease(ctx, ref, "movie", m.ID)
 	if err != nil {
+		h.deps.Logger.Warn("grab failed", "movieId", id, "release", ref.Title, "protocol", ref.Protocol, "error", err.Error())
 		h.writeError(w, http.StatusUnprocessableEntity, "unprocessable", err.Error())
 		return
 	}

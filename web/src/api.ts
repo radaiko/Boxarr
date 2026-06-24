@@ -20,14 +20,22 @@ function headers(extra?: Record<string, string>): Record<string, string> {
   return h
 }
 
-function fail(method: string, path: string, status: number): Error {
-  if (status === 401) return new Error(`unauthorized (${status}) — set the correct API key in Settings`)
-  return new Error(`${method} ${path}: ${status}`)
+// fail builds an error from a failed response, surfacing the server's own error
+// message (the {error:{message}} envelope or a `detail` field) instead of just the
+// status — so toasts say *why* (e.g. "fetching .nzb: …") not "POST …: 422".
+async function fail(method: string, path: string, r: Response): Promise<Error> {
+  if (r.status === 401) return new Error(`unauthorized (${r.status}) — set the correct API key in Settings`)
+  let msg = ''
+  try {
+    const b = await r.json()
+    msg = b?.error?.message || b?.detail || ''
+  } catch { /* non-JSON body */ }
+  return new Error(msg || `${method} ${path}: ${r.status}`)
 }
 
 export async function getJSON<T>(path: string): Promise<T> {
   const r = await fetch(base + path, { headers: headers() })
-  if (!r.ok) throw fail('GET', path, r.status)
+  if (!r.ok) throw await fail('GET', path, r)
   return (await r.json()) as T
 }
 
@@ -41,7 +49,7 @@ export async function postJSON<T>(path: string, body: unknown): Promise<T> {
 
 export async function del(path: string): Promise<void> {
   const r = await fetch(base + path, { method: 'DELETE', headers: headers() })
-  if (!r.ok) throw fail('DELETE', path, r.status)
+  if (!r.ok) throw await fail('DELETE', path, r)
 }
 
 async function sendJSON<T>(method: string, path: string, body: unknown): Promise<T> {
@@ -50,7 +58,7 @@ async function sendJSON<T>(method: string, path: string, body: unknown): Promise
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   })
-  if (!r.ok) throw fail(method, path, r.status)
+  if (!r.ok) throw await fail(method, path, r)
   return (await r.json()) as T
 }
 

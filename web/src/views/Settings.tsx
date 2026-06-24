@@ -370,8 +370,26 @@ function genKey(): string {
   return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-function copy(text: string): void {
-  void navigator.clipboard?.writeText(text)
+// copy works on plain HTTP too: navigator.clipboard requires a secure context
+// (HTTPS/localhost), which a LAN HTTP instance isn't — so fall back to execCommand.
+async function copy(text: string): Promise<void> {
+  try {
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      toast('Copied to clipboard.', 'ok')
+      return
+    }
+  } catch { /* fall through to execCommand */ }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.focus()
+  ta.select()
+  const ok = (() => { try { return document.execCommand('copy') } catch { return false } })()
+  document.body.removeChild(ta)
+  toast(ok ? 'Copied to clipboard.' : 'Copy failed — select and copy manually.', ok ? 'ok' : 'err')
 }
 
 type TestState = 'pending' | { ok: boolean; text: string }
