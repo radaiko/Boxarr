@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -126,18 +127,44 @@ type ReleaseDates struct {
 	} `json:"results"`
 }
 
-// MovieDetails is /movie/{id} with release_dates appended.
+// MovieDetails is /movie/{id} with release_dates + alternative_titles appended.
 type MovieDetails struct {
-	ID           int          `json:"id"`
-	Title        string       `json:"title"`
-	IMDBID       string       `json:"imdb_id"`
-	Status       string       `json:"status"`
-	ReleaseDate  string       `json:"release_date"`
-	Runtime      int          `json:"runtime"`
-	Overview     string       `json:"overview"`
-	PosterPath   string       `json:"poster_path"`
-	BackdropPath string       `json:"backdrop_path"`
-	ReleaseDates ReleaseDates `json:"release_dates"`
+	ID                int          `json:"id"`
+	Title             string       `json:"title"`
+	OriginalTitle     string       `json:"original_title"`
+	IMDBID            string       `json:"imdb_id"`
+	Status            string       `json:"status"`
+	ReleaseDate       string       `json:"release_date"`
+	Runtime           int          `json:"runtime"`
+	Overview          string       `json:"overview"`
+	PosterPath        string       `json:"poster_path"`
+	BackdropPath      string       `json:"backdrop_path"`
+	ReleaseDates      ReleaseDates `json:"release_dates"`
+	AlternativeTitles struct {
+		Titles []struct {
+			ISO31661 string `json:"iso_3166_1"`
+			Title    string `json:"title"`
+		} `json:"titles"`
+	} `json:"alternative_titles"`
+}
+
+// AltTitles returns the distinct alternative + original titles for cross-language
+// matching (e.g. a German release of an English-catalogued movie).
+func (d *MovieDetails) AltTitles() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(t string) {
+		t = strings.TrimSpace(t)
+		if t != "" && !seen[strings.ToLower(t)] {
+			seen[strings.ToLower(t)] = true
+			out = append(out, t)
+		}
+	}
+	add(d.OriginalTitle)
+	for _, t := range d.AlternativeTitles.Titles {
+		add(t.Title)
+	}
+	return out
 }
 
 // Configuration fetches (once) and caches the image configuration.
@@ -184,7 +211,7 @@ func (c *Client) TVExternalIDs(ctx context.Context, id int) (*ExternalIDs, error
 // MovieDetails fetches a movie header + release_dates.
 func (c *Client) MovieDetails(ctx context.Context, id int) (*MovieDetails, error) {
 	var out MovieDetails
-	err := c.get(ctx, fmt.Sprintf("/movie/%d?append_to_response=release_dates", id), &out)
+	err := c.get(ctx, fmt.Sprintf("/movie/%d?append_to_response=release_dates,alternative_titles", id), &out)
 	return &out, err
 }
 

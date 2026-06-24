@@ -89,10 +89,14 @@ func (h *Handler) triggerTVDBRefresh(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 }
 
-// triggerLibraryRefresh reconciles the TorBox/WebDAV mount and re-runs the Plex
-// stream check, in the background.
+// triggerLibraryRefresh refreshes movie alternative titles (TMDB), reconciles the
+// TorBox/WebDAV mount, and re-runs the Plex stream check, in the background. The
+// title refresh runs first so the reconcile recognizes cross-language folders.
 func (h *Handler) triggerLibraryRefresh(w http.ResponseWriter, r *http.Request) {
 	h.runBackground("refresh", "Refresh from TorBox + Plex", func(ctx context.Context) error {
+		if h.deps.Catalog != nil {
+			_ = h.deps.Catalog.RefreshMovieTitles(ctx, nil)
+		}
 		if h.deps.Reconciler != nil {
 			if err := h.deps.Reconciler.Reconcile(ctx); err != nil {
 				return err

@@ -236,6 +236,9 @@ func (w *Workers) libraryTitleSet(ctx context.Context) map[string]bool {
 	if movies, err := w.store.ListMovies(ctx); err == nil {
 		for _, m := range movies {
 			out[normTitleKey(m.Title)] = true
+			for _, alt := range m.AltTitles { // German/other-language releases
+				out[normTitleKey(alt)] = true
+			}
 		}
 	}
 	if series, err := w.store.ListSeries(ctx); err == nil {

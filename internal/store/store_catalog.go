@@ -446,7 +446,8 @@ const movieColumns = `id, tmdb_id, imdb_id, title, sort_title, year, overview,
 	tmdb_status, minimum_availability, release_date, digital_release,
 	physical_release, runtime, status, monitored, has_file, quality_profile_id,
 	root_folder_path, library_path, job_id, poster_path, backdrop_path,
-	metadata_json, last_metadata_sync, added_at, created_at, updated_at, last_searched_at, lang_missing`
+	metadata_json, last_metadata_sync, added_at, created_at, updated_at, last_searched_at, lang_missing,
+	alt_titles`
 
 func scanMovie(row scanner) (*media.Movie, error) {
 	var m media.Movie
@@ -457,12 +458,17 @@ func scanMovie(row scanner) (*media.Movie, error) {
 		lastSync, lastSearched                            sql.NullTime
 		status                                            string
 		monitored, hasFile, langMissing                   int
+		altTitles                                         sql.NullString
 	)
 	if err := row.Scan(&m.ID, &m.TMDBID, &imdb, &m.Title, &m.SortTitle, &year, &m.Overview,
 		&m.TMDBStatus, &m.MinimumAvailability, &relDate, &digital, &physical, &runtime,
 		&status, &monitored, &hasFile, &m.QualityProfileID, &m.RootFolderPath, &libPath,
-		&jobID, &poster, &backdrop, &meta, &lastSync, &m.AddedAt, &m.CreatedAt, &m.UpdatedAt, &lastSearched, &langMissing); err != nil {
+		&jobID, &poster, &backdrop, &meta, &lastSync, &m.AddedAt, &m.CreatedAt, &m.UpdatedAt, &lastSearched, &langMissing,
+		&altTitles); err != nil {
 		return nil, err
+	}
+	if altTitles.String != "" {
+		m.AltTitles = strings.Split(altTitles.String, "\n")
 	}
 	m.Year, m.Runtime, m.JobID = int(year.Int64), int(runtime.Int64), jobID.Int64
 	m.IMDBID, m.ReleaseDate, m.DigitalRelease, m.PhysicalRelease = imdb.String, relDate.String, digital.String, physical.String
@@ -476,6 +482,16 @@ func scanMovie(row scanner) (*media.Movie, error) {
 		m.LastSearchedAt = &lastSearched.Time
 	}
 	return &m, nil
+}
+
+// SetMovieAltTitles stores a movie's alternative/original titles (newline-joined)
+// for cross-language mount matching.
+func (s *Store) SetMovieAltTitles(ctx context.Context, id int64, titles []string) error {
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE movie SET alt_titles=? WHERE id=?`, strings.Join(titles, "\n"), id); err != nil {
+		return fmt.Errorf("setting movie alt titles: %w", err)
+	}
+	return nil
 }
 
 // MarkMovieSearched stamps last_searched_at=now on a movie (for the search cadence).

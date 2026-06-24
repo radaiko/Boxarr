@@ -111,6 +111,7 @@ func (s *Service) AddMovie(ctx context.Context, tmdbID int64, monitored bool) (*
 		RootFolderPath:      s.set.MovieLibraryRoot(),
 		PosterPath:          d.PosterPath,
 		BackdropPath:        d.BackdropPath,
+		AltTitles:           d.AltTitles(),
 	}
 	m.Status = movieStatus(m)
 	id, err := s.store.CreateMovie(ctx, m)
@@ -123,7 +124,36 @@ func (s *Service) AddMovie(ctx context.Context, tmdbID int64, monitored bool) (*
 		return nil, fmt.Errorf("creating movie: %w", err)
 	}
 	m.ID = id
+	if len(m.AltTitles) > 0 {
+		_ = s.store.SetMovieAltTitles(ctx, id, m.AltTitles)
+	}
 	return m, nil
+}
+
+// RefreshMovieTitles re-fetches every movie's alternative/original titles from
+// TMDB (for cross-language mount matching). Reported per movie.
+func (s *Service) RefreshMovieTitles(ctx context.Context, report func(string)) error {
+	movies, err := s.store.ListMovies(ctx)
+	if err != nil {
+		return err
+	}
+	for _, m := range movies {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		d, err := s.set.TMDB().MovieDetails(ctx, int(m.TMDBID))
+		if err != nil {
+			if report != nil {
+				report(fmt.Sprintf("%s — TMDB error: %v", m.Title, err))
+			}
+			continue
+		}
+		alts := d.AltTitles()
+		if err := s.store.SetMovieAltTitles(ctx, m.ID, alts); err == nil && report != nil {
+			report(fmt.Sprintf("%s — %d alternative titles", m.Title, len(alts)))
+		}
+	}
+	return nil
 }
 
 // movieStatus computes the initial MediaStatus: wanted when monitored + released,

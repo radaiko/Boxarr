@@ -490,6 +490,9 @@ func (h *Handler) catalogIndex(ctx context.Context) (byTitle map[string]catalogE
 		for _, mv := range ms {
 			e := catalogEntry{poster: mv.PosterPath, kind: "movie", id: mv.ID}
 			byTitle[normTitle(mv.Title)] = e
+			for _, alt := range mv.AltTitles { // match German/other-language releases too
+				byTitle[normTitle(alt)] = e
+			}
 			movieByID[mv.ID] = e
 		}
 	}

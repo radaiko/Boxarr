@@ -97,6 +97,7 @@ type Movie struct {
 	IMDBID              string
 	Title               string
 	SortTitle           string
+	AltTitles           []string // alternative/original titles (TMDB) for cross-language matching
 	Year                int
 	Overview            string
 	TMDBStatus          string
