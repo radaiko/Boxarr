@@ -113,3 +113,15 @@ func TestUpgradeDue(t *testing.T) {
 		t.Error("never-searched lang_missing should be due")
 	}
 }
+
+func TestLanguageSatisfiedMulti(t *testing.T) {
+	deEn := []string{"DE", "EN"}
+	de := []string{"DE"}
+	// MULTi is a wildcard — accepted optimistically (Plex verifies after download).
+	if !languageSatisfied("Solo.Leveling.S02E13.2160p.WEB-DL.MULTI.AAC2.0.x265.Multi.Subs.AniMeitantei", deEn, true) {
+		t.Error("MULTi release must satisfy requireAny [DE,EN] (wildcard)")
+	}
+	if !languageSatisfied("Film.2024.MULTi.1080p.BluRay", de, false) {
+		t.Error("MULTi release must satisfy ranked [DE] (wildcard)")
+	}
+}

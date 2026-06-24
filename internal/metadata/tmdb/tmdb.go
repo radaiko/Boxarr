@@ -258,12 +258,40 @@ func (c *Client) ImageURL(size, filePath string) string {
 	return cfg.Images.SecureBaseURL + size + filePath
 }
 
+// isV3Key reports whether the credential is a TMDB v3 API key (32 hex chars)
+// rather than a v4 read-access token (a much longer JWT).
+func isV3Key(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for _, c := range s {
+		isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+		if !isHex {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Client) get(ctx context.Context, path string, dst any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	url := c.baseURL + path
+	// TMDB has two credential types and people mix them up: the v4 "API Read Access
+	// Token" (a JWT, sent as a Bearer header) and the v3 "API Key" (32-hex, sent as
+	// ?api_key=). Accept either so a valid-but-wrong-type token still works.
+	if isV3Key(c.token) {
+		sep := "?"
+		if strings.Contains(url, "?") {
+			sep = "&"
+		}
+		url += sep + "api_key=" + c.token
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("building request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if !isV3Key(c.token) {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {

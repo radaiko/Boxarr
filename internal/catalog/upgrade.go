@@ -213,7 +213,10 @@ func languageSatisfied(name string, ideal []string, requireAny bool) bool {
 	langs := release.DetectLanguages(name)
 	has := func(code string) bool {
 		for _, l := range langs {
-			if strings.EqualFold(l, code) {
+			// MULTi is a wildcard: a multi-language release very likely carries the
+			// wanted track, so accept it (the Plex check verifies after download and
+			// re-searches if it turns out to be missing). Matches the selection engine.
+			if strings.EqualFold(l, code) || strings.EqualFold(l, "MULTI") {
 				return true
 			}
 		}

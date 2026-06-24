@@ -85,3 +85,15 @@ func TestSearchMovie(t *testing.T) {
 		t.Fatalf("search: %+v", res)
 	}
 }
+
+func TestIsV3Key(t *testing.T) {
+	if !isV3Key("7f8450aa1f71e3e39ee6303fcff42827") {
+		t.Error("32-hex should be detected as a v3 API key")
+	}
+	if isV3Key("eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJ4In0.sig") {
+		t.Error("a v4 JWT must NOT be detected as a v3 key")
+	}
+	if isV3Key("") || isV3Key("short") {
+		t.Error("non-32-char strings are not v3 keys")
+	}
+}
