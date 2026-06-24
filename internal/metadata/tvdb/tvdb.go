@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -174,6 +176,37 @@ func (c *Client) SeriesExtended(ctx context.Context, id int) (*SeriesExtended, e
 	var out SeriesExtended
 	_, err := c.get(ctx, fmt.Sprintf("/series/%d/extended", id), &out)
 	return &out, err
+}
+
+// SearchResult is one entry from /search?type=series (snake_case fields).
+type SearchResult struct {
+	TVDBID    string     `json:"tvdb_id"`
+	Name      string     `json:"name"`
+	Year      string     `json:"year"`
+	Overview  string     `json:"overview"`
+	ImageURL  string     `json:"image_url"`
+	RemoteIDs []RemoteID `json:"remote_ids"`
+}
+
+// TMDBID returns the linked TheMovieDB id (so the result is addable to the
+// TMDB-keyed catalog), or 0 if TheTVDB has no TMDB cross-reference.
+func (r SearchResult) TMDBID() int64 {
+	for _, ri := range r.RemoteIDs {
+		if strings.Contains(strings.ToLower(ri.SourceName), "moviedb") {
+			if id, err := strconv.ParseInt(strings.TrimSpace(ri.ID), 10, 64); err == nil {
+				return id
+			}
+		}
+	}
+	return 0
+}
+
+// SearchSeries searches TheTVDB for series by name (better anime coverage than
+// TMDB's text search).
+func (c *Client) SearchSeries(ctx context.Context, query string) ([]SearchResult, error) {
+	var out []SearchResult
+	_, err := c.get(ctx, "/search?type=series&query="+url.QueryEscape(query), &out)
+	return out, err
 }
 
 // Episodes fetches all episodes for a series in the given ordering

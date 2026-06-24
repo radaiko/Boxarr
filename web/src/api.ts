@@ -144,6 +144,7 @@ export async function loadImageBase(): Promise<void> {
 }
 export function posterURL(path?: string): string {
   if (!path) return ''
+  if (path.startsWith('http')) return path // already absolute (e.g. a TVDB image URL)
   if (!posterBase) posterBase = 'https://image.tmdb.org/t/p/w342'
   return posterBase + path
 }

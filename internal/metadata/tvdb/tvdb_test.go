@@ -109,3 +109,16 @@ func TestLoginOmitsEmptyPin(t *testing.T) {
 	check("", false)    // legacy / negotiated key — apikey only
 	check("1234", true) // user-supported key — apikey + pin
 }
+
+func TestSearchResultTMDBID(t *testing.T) {
+	r := SearchResult{RemoteIDs: []RemoteID{
+		{ID: "1396", Type: 12, SourceName: "TheMovieDB.com"},
+		{ID: "tt0903747", SourceName: "IMDB"},
+	}}
+	if r.TMDBID() != 1396 {
+		t.Errorf("TMDBID = %d, want 1396", r.TMDBID())
+	}
+	if (SearchResult{RemoteIDs: []RemoteID{{ID: "x", SourceName: "IMDB"}}}).TMDBID() != 0 {
+		t.Error("no TheMovieDB remote id → 0")
+	}
+}

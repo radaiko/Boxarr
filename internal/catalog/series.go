@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +49,14 @@ func (s *Service) LookupSeries(ctx context.Context, term string) ([]SeriesCandid
 		}
 		return s.tvCandidate(ctx, id)
 	}
+	// Prefer TheTVDB when a key is configured (better anime coverage); fall back to
+	// TMDB if TVDB errors or returns nothing usable. Only TVDB results with a TMDB
+	// cross-reference are addable (the catalog is TMDB-keyed).
+	if s.set.TVDBEnabled() {
+		if cands := s.tvdbLookup(ctx, term); len(cands) > 0 {
+			return cands, nil
+		}
+	}
 	results, err := s.set.TMDB().SearchTV(ctx, term, 0)
 	if err != nil {
 		return nil, err
@@ -60,6 +69,35 @@ func (s *Service) LookupSeries(ctx context.Context, term string) ([]SeriesCandid
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// tvdbLookup searches TheTVDB and returns candidates that carry a TMDB id (so
+// they're addable). Best-effort: any error yields no candidates → TMDB fallback.
+func (s *Service) tvdbLookup(ctx context.Context, term string) []SeriesCandidate {
+	cl := s.set.TVDB()
+	if cl == nil {
+		return nil
+	}
+	results, err := cl.SearchSeries(ctx, term)
+	if err != nil {
+		slog.Default().Warn("tvdb lookup failed; falling back to TMDB", "term", term, "error", err)
+		return nil
+	}
+	var out []SeriesCandidate
+	for _, r := range results {
+		tmdbID := r.TMDBID()
+		if tmdbID == 0 {
+			continue // not addable without a TMDB id
+		}
+		tvdbID, _ := strconv.ParseInt(strings.TrimSpace(r.TVDBID), 10, 64)
+		c := SeriesCandidate{
+			TMDBID: tmdbID, TVDBID: tvdbID, Title: r.Name, Year: yearOf(r.Year),
+			Overview: r.Overview, PosterPath: r.ImageURL, // absolute URL; posterURL passes it through
+		}
+		s.markSeriesInLibrary(ctx, &c)
+		out = append(out, c)
+	}
+	return out
 }
 
 func (s *Service) tvCandidate(ctx context.Context, tmdbID int64) ([]SeriesCandidate, error) {
