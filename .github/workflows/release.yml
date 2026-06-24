@@ -2,16 +2,18 @@ name: release
 
 # Publishes the multi-arch image to GHCR (ghcr.io/radaiko/boxarr).
 #
-#   • push to main            → :latest, :dev, :main-<sha>   (rolling dev builds)
-#   • push tag vX.Y.Z[-pre]   → :X.Y.Z[-pre] (+ :X.Y for stable) + a GitHub Release
-#                               (marked prerelease when the tag has a -suffix)
+#   • push tag vX.Y.Z[-pre]   → :X.Y.Z[-pre] + :latest + :dev (+ :X.Y for stable)
+#                               + a GitHub Release (prerelease when tag has a -suffix)
 #   • manual "Run workflow"   → the version you type (default 0.0.1-dev)
 #
-# To cut the first dev image:  git tag v0.0.1-dev && git push origin v0.0.1-dev
-# (or run this workflow from the Actions tab — it defaults to 0.0.1-dev).
+# Tags-only (no main-push build): a commit's main + tag pushes used to build the
+# SAME image, and serialized concurrency cancelled the main build (which tagged
+# :latest) when the tag build queued — leaving :latest stale. Building only on
+# tags means one build per release that publishes both :X.Y.Z and :latest.
+#
+# To cut a dev image:  git tag v0.0.1-dev && git push origin v0.0.1-dev
 on:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -20,11 +22,9 @@ on:
         required: true
         default: '0.0.1-dev'
 
-# Serialize ALL release builds through one group. A commit's main + tag pushes
-# build the same multi-arch image; running them concurrently contends on Docker
-# Hub base-image pulls and hangs both builds to the timeout (observed: 8m solo vs
-# 24m+ concurrent). Serializing costs a tag build ~7m of queue wait but keeps
-# every build reliable. cancel-in-progress:false so a queued tag isn't dropped.
+# Serialize release builds so two tags pushed close together don't build
+# concurrently and contend on Docker Hub base-image pulls (observed: 8m solo vs
+# 24m+ concurrent). cancel-in-progress:false so a queued build isn't dropped.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -59,11 +59,10 @@ jobs:
         with:
           images: ghcr.io/radaiko/boxarr
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=dev,enable={{is_default_branch}}
-            type=sha,prefix=main-,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' }}
+            type=raw,value=dev,enable=${{ github.event_name == 'push' }}
             type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
       - name: build and push
         uses: docker/build-push-action@v6
