@@ -74,3 +74,28 @@ func TestGrabUsenetFetchesAndStoresNZB(t *testing.T) {
 		t.Fatalf("usenet job artifact not stored: %+v", jobs)
 	}
 }
+
+func TestGrabTorrentFallsBackToHashMagnet(t *testing.T) {
+	h, st := newV1Cat(t)
+	ctx := context.Background()
+	mid, _ := st.CreateMovie(ctx, &media.Movie{TMDBID: 604, Title: "Forbidden", Monitored: true, Status: media.MediaWanted})
+	// An indexer that 403s the .torrent download (the user's case).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	rid := encodeReleaseID(grabRef{Protocol: "torrent", DownloadURL: srv.URL + "/x.torrent",
+		InfoHash: "DEADBEEF", Title: "Forbidden.2024.1080p"})
+	rec := req(t, h, http.MethodPost, "/movies/"+itoa(mid)+"/grab", "", "127.0.0.1:1", `{"releaseId":"`+rid+`"}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("grab should fall back to hash magnet on 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		JobID int64 `json:"jobId"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	j, _ := st.GetJob(ctx, got.JobID)
+	if j.TorrentMagnet != "magnet:?xt=urn:btih:deadbeef" {
+		t.Fatalf("expected hash magnet fallback, got magnet=%q torrentFile=%dB", j.TorrentMagnet, len(j.TorrentFile))
+	}
+}

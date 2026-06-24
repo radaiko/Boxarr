@@ -83,13 +83,20 @@ func (h *Handler) grabRelease(ctx context.Context, ref grabRef, mediaType string
 		case ref.MagnetURL != "":
 			j.TorrentMagnet = ref.MagnetURL // no HTTP fetch needed
 		case ref.DownloadURL != "":
-			b, err := fetchArtifact(ctx, ref.DownloadURL)
-			if err != nil {
+			// Fetch the .torrent; if that's forbidden/unavailable (some indexers 403
+			// the direct download), fall back to an infohash magnet — TorBox resolves
+			// a torrent by its hash (cached or via DHT) without the .torrent file.
+			if b, err := fetchArtifact(ctx, ref.DownloadURL); err == nil {
+				j.TorrentFile = b
+			} else if hash != "" {
+				j.TorrentMagnet = magnetFromHash(hash)
+			} else {
 				return nil, false, fmt.Errorf("fetching .torrent: %w", err)
 			}
-			j.TorrentFile = b
+		case hash != "":
+			j.TorrentMagnet = magnetFromHash(hash) // hash only — let TorBox resolve it
 		default:
-			return nil, false, fmt.Errorf("release has no magnet or download URL")
+			return nil, false, fmt.Errorf("release has no magnet, download URL, or infohash")
 		}
 		id, err := st.CreateJob(ctx, j)
 		if err != nil {
@@ -124,6 +131,10 @@ func (h *Handler) grabRelease(ctx context.Context, ref grabRef, mediaType string
 	j.ID = id
 	return j, false, nil
 }
+
+// magnetFromHash builds a minimal magnet URI from a torrent infohash. TorBox
+// resolves it via its cache/DHT, so we don't need the .torrent file.
+func magnetFromHash(hash string) string { return "magnet:?xt=urn:btih:" + hash }
 
 func fetchArtifact(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
