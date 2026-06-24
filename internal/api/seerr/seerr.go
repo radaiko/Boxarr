@@ -46,6 +46,7 @@ type Handler struct {
 func NewRouter(kind Kind, deps Deps) http.Handler {
 	h := &Handler{kind: kind, deps: deps}
 	r := chi.NewRouter()
+	r.Use(h.logRequest)  // first: log every arriving request (diagnose Overseerr reachability)
 	r.Use(lowercasePath) // Seerr uses /qualityProfile; we register lowercase
 	r.Use(h.auth)
 	r.Get("/system/status", h.systemStatus)
@@ -62,6 +63,22 @@ func NewRouter(kind Kind, deps Deps) http.Handler {
 		r.Post("/movie", h.addMovie)
 	}
 	return r
+}
+
+// logRequest logs every request reaching the Radarr/Sonarr emulation (visible in
+// the Logs view), so you can tell whether Overseerr/Jellyseerr is reaching Boxarr
+// at all (no log = a network/URL problem) and whether its API key matched.
+func (h *Handler) logRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("X-Api-Key")
+		if key == "" {
+			key = r.URL.Query().Get("apikey")
+		}
+		slog.Default().Info("seerr request",
+			"kind", string(h.kind), "method", r.Method, "path", r.URL.Path,
+			"keyProvided", key != "", "keyValid", h.keyMatches(key), "remote", r.RemoteAddr)
+		next.ServeHTTP(w, r)
+	})
 }
 
 // lowercasePath lower-cases the request path so /qualityProfile resolves to the
