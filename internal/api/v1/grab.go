@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -144,8 +146,14 @@ func (h *Handler) fetchArtifact(ctx context.Context, rawURL string) ([]byte, err
 	// When the download URL points at Prowlarr, authenticate: Prowlarr's /download
 	// proxy requires the API key, and the URL doesn't always embed it — a plain GET
 	// then 403s. Harmless on non-Prowlarr URLs.
+	prowlarrAuthed := false
 	if base := strings.TrimRight(h.deps.Settings.ProwlarrURL(), "/"); base != "" && strings.HasPrefix(rawURL, base) {
 		req.Header.Set("X-Api-Key", h.deps.Settings.ProwlarrAPIKey())
+		prowlarrAuthed = true
+	}
+	host := ""
+	if u, perr := neturl.Parse(rawURL); perr == nil {
+		host = u.Host
 	}
 	resp, err := grabHTTP.Do(req)
 	if err != nil {
@@ -154,16 +162,22 @@ func (h *Handler) fetchArtifact(ctx context.Context, rawURL string) ([]byte, err
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if resp.StatusCode >= 400 {
-		// Surface the upstream message (Prowlarr/the indexer says why — bad key, VIP
-		// required, link expired) instead of just the status code.
 		msg := strings.TrimSpace(string(body))
 		if len(msg) > 200 {
 			msg = msg[:200]
 		}
+		// Log the source so we can tell whether Prowlarr or the indexer rejected it.
+		slog.Default().Warn("artifact download failed", "host", host, "prowlarrAuthed", prowlarrAuthed,
+			"status", resp.StatusCode, "contentType", resp.Header.Get("Content-Type"), "body", msg)
 		if msg != "" {
-			return nil, fmt.Errorf("status %d: %s", resp.StatusCode, msg)
+			return nil, fmt.Errorf("status %d (%s): %s", resp.StatusCode, host, msg)
 		}
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
+		return nil, fmt.Errorf("status %d from %s", resp.StatusCode, host)
+	}
+	// Some indexers 200 with an error/HTML page instead of an NZB; reject those.
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "text/html") {
+		slog.Default().Warn("artifact download returned HTML, not a file", "host", host, "contentType", ct)
+		return nil, fmt.Errorf("got an HTML page from %s (not an NZB/torrent — check the indexer download/auth)", host)
 	}
 	return body, nil
 }
