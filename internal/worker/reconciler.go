@@ -50,10 +50,11 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 	// tracked even when no job matches it (adopted items have no job; import jobs
 	// get reaped). This keeps "known" durable instead of flipping to unknown.
 	lib := w.libraryTitleSet(ctx)
-	// Imported-symlink targets: a durable, language-independent link — a folder a
-	// library symlink points into is tracked even if its title can't be matched
-	// (e.g. a German-titled release of an English-catalog movie).
-	syms, _ := w.store.ListImportedSymlinks(ctx)
+	// Mount folders backed by a library item — resolve the actual on-disk library
+	// symlinks (ground truth that survives job reaping) plus table records. A
+	// folder a library symlink points into is tracked even if its title can't be
+	// matched (e.g. a German-titled release of an English-catalog movie).
+	targets := w.libraryMountTargets(ctx)
 
 	// Tombstones: paths deleted on TorBox that a stale rclone cache may still
 	// list. Skip re-adding them; track which we still see so we can clear the
@@ -96,8 +97,8 @@ func (w *Workers) reconcileOnce(ctx context.Context) error {
 				item.Category = guessCategory(name)
 				if p, perr := release.ParseRelease(name); perr == nil && p != nil && lib[normTitleKey(p.Title)] {
 					item.Known = true // a library item by this title — tracked, just no live job
-				} else if folderHasSymlinkTarget(remotePath, syms) {
-					item.Known = true // a library symlink points into this folder — tracked
+				} else if folderHasTarget(remotePath, targets) {
+					item.Known = true // a library item's file lives in this folder — tracked
 				}
 			}
 			if err := w.store.UpsertWebDAVItem(ctx, item); err != nil {
@@ -208,12 +209,51 @@ func dirSize(dir string) int64 {
 	return total
 }
 
-// folderHasSymlinkTarget reports whether any imported library symlink targets a
-// file inside remotePath — proof the mount folder backs a tracked library item.
-func folderHasSymlinkTarget(remotePath string, syms []*job.ImportedSymlink) bool {
+// libraryMountTargets returns every mount path a library item points to, read
+// from the on-disk library symlinks (ground truth, survives job reaping) plus any
+// imported_symlinks table records.
+func (w *Workers) libraryMountTargets(ctx context.Context) []string {
+	var out []string
+	readlink := func(p string) {
+		if p == "" {
+			return
+		}
+		t, err := os.Readlink(p)
+		if err != nil {
+			return
+		}
+		if !filepath.IsAbs(t) {
+			t = filepath.Join(filepath.Dir(p), t)
+		}
+		out = append(out, t)
+	}
+	if movies, err := w.store.ListMovies(ctx); err == nil {
+		for _, m := range movies {
+			readlink(m.LibraryPath)
+		}
+	}
+	if series, err := w.store.ListSeries(ctx); err == nil {
+		for _, s := range series {
+			if eps, e := w.store.ListEpisodes(ctx, s.ID); e == nil {
+				for _, ep := range eps {
+					readlink(ep.LibraryPath)
+				}
+			}
+		}
+	}
+	if syms, err := w.store.ListImportedSymlinks(ctx); err == nil {
+		for _, s := range syms {
+			out = append(out, s.TargetPath)
+		}
+	}
+	return out
+}
+
+// folderHasTarget reports whether any target path lives inside remotePath.
+func folderHasTarget(remotePath string, targets []string) bool {
 	prefix := strings.TrimRight(remotePath, "/") + "/"
-	for _, s := range syms {
-		if s.TargetPath == remotePath || strings.HasPrefix(s.TargetPath, prefix) {
+	for _, t := range targets {
+		if t == remotePath || strings.HasPrefix(t, prefix) {
 			return true
 		}
 	}

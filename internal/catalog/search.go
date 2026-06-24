@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -297,9 +298,7 @@ func (s *Service) insertJob(ctx context.Context, jb *job.Job) (*job.Job, error) 
 }
 
 func (s *Service) logSearchErr(q string, err error) {
-	// best-effort: catalog has no logger; errors surface via the caller's logs.
-	_ = q
-	_ = err
+	slog.Default().Warn("catalog: search error", "query", q, "error", err)
 }
 
 func fetchArtifact(ctx context.Context, url string) ([]byte, error) {

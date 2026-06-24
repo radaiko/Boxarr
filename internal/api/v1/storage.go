@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -144,12 +146,52 @@ var titleNormRe = regexp.MustCompile(`[^a-z0-9]+`)
 // normTitle normalizes a title for fuzzy catalog matching: lowercased, with
 // punctuation stripped and whitespace collapsed — so a parsed release title like
 // "Avengers Endgame" matches the catalog's "Avengers: Endgame".
-// folderHasSymlinkTarget reports whether any imported library symlink points to a
-// file inside remotePath (the mount folder) — proof the folder backs a tracked item.
-func folderHasSymlinkTarget(remotePath string, syms []*job.ImportedSymlink) bool {
+// libraryMountTargets returns every mount path a library item points to. It reads
+// the actual on-disk library symlinks (movie + episode LibraryPath) — ground truth
+// that survives job reaping (which empties imported_symlinks) — plus any table
+// records as a fallback.
+func (h *Handler) libraryMountTargets(ctx context.Context) []string {
+	var out []string
+	readlink := func(p string) {
+		if p == "" {
+			return
+		}
+		t, err := os.Readlink(p)
+		if err != nil {
+			return
+		}
+		if !filepath.IsAbs(t) {
+			t = filepath.Join(filepath.Dir(p), t)
+		}
+		out = append(out, t)
+	}
+	if movies, err := h.deps.Store.ListMovies(ctx); err == nil {
+		for _, m := range movies {
+			readlink(m.LibraryPath)
+		}
+	}
+	if series, err := h.deps.Store.ListSeries(ctx); err == nil {
+		for _, s := range series {
+			if eps, e := h.deps.Store.ListEpisodes(ctx, s.ID); e == nil {
+				for _, ep := range eps {
+					readlink(ep.LibraryPath)
+				}
+			}
+		}
+	}
+	if syms, err := h.deps.Store.ListImportedSymlinks(ctx); err == nil {
+		for _, s := range syms {
+			out = append(out, s.TargetPath)
+		}
+	}
+	return out
+}
+
+// folderHasTarget reports whether any target path lives inside remotePath.
+func folderHasTarget(remotePath string, targets []string) bool {
 	prefix := strings.TrimRight(remotePath, "/") + "/"
-	for _, s := range syms {
-		if s.TargetPath == remotePath || strings.HasPrefix(s.TargetPath, prefix) {
+	for _, t := range targets {
+		if t == remotePath || strings.HasPrefix(t, prefix) {
 			return true
 		}
 	}
@@ -384,10 +426,11 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 	}
 	byTitle, movieByID, seriesByID := h.catalogIndex(r.Context())
 	jobMedia, _ := h.deps.Store.JobMediaIndex(r.Context())
-	// Imported-symlink targets are a durable, language-independent link from the
-	// library to the exact mount folder backing it — so a German-titled folder
-	// (which can't title-match its English catalog entry) is still recognized.
-	symTargets, _ := h.deps.Store.ListImportedSymlinks(r.Context())
+	// Mount folders backed by a library item — the durable, language- and
+	// job-independent link. Resolve the actual on-disk library symlinks (ground
+	// truth: survives job reaping that empties imported_symlinks) plus any table
+	// records. A German-titled folder that can't title-match still matches here.
+	targets := h.libraryMountTargets(r.Context())
 	cat := r.URL.Query().Get("category")
 	out := make([]webdavItemDTO, 0, len(items))
 	for _, it := range items {
@@ -424,8 +467,8 @@ func (h *Handler) listWebDAV(w http.ResponseWriter, r *http.Request) {
 				dto.Kind = c.kind
 			}
 		}
-		// Last resort: a library symlink targets a file inside this folder → tracked.
-		if !dto.Known && folderHasSymlinkTarget(it.RemotePath, symTargets) {
+		// Last resort: a library item's file lives inside this folder → tracked.
+		if !dto.Known && folderHasTarget(it.RemotePath, targets) {
 			dto.Known = true
 		}
 		out = append(out, dto)

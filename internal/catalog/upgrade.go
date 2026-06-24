@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -109,10 +110,25 @@ func (s *Service) tryUpgradeMovie(ctx context.Context, m *media.Movie, now time.
 	}
 	results, err := s.search.Search(ctx, prowlarr.SearchParams{Query: q, Type: "movie", Categories: []int{2000}})
 	if err != nil {
+		s.logSearchErr(q, err)
 		return
 	}
-	if best, ok := s.pickBest(ctx, results, "movie"); ok && s.shouldGrabUpgrade(cfg, ideal, curName, best.Title, m.LangMissing) {
-		_, _ = s.grabBest(ctx, best, "movie", m.ID, true)
+	log := slog.Default().With("upgrade", m.Title, "langMissing", m.LangMissing)
+	log.Info("upgrade: searched", "query", q, "candidates", len(results))
+	best, ok := s.pickBest(ctx, results, "movie")
+	if !ok {
+		log.Info("upgrade: no acceptable release (all rejected or KB-verified wrong)")
+		return
+	}
+	grab := s.shouldGrabUpgrade(cfg, ideal, curName, best.Title, m.LangMissing)
+	log.Info("upgrade: decision", "best", best.Title, "current", curName,
+		"bestHasIdealLang", languageSatisfied(best.Title, ideal, cfg.RequireAnyLanguage), "grab", grab)
+	if grab {
+		if _, err := s.grabBest(ctx, best, "movie", m.ID, true); err != nil {
+			log.Warn("upgrade: grab failed", "release", best.Title, "error", err)
+		} else {
+			log.Info("upgrade: grabbed", "release", best.Title)
+		}
 	}
 }
 
@@ -137,9 +153,24 @@ func (s *Service) tryUpgradeEpisode(ctx context.Context, sr *media.Series, ep *m
 		return
 	}
 	_ = s.store.MarkEpisodesSearched(ctx, ep.ID)
+	log := slog.Default().With("upgrade", fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber),
+		"scene", fmt.Sprintf("S%02dE%02d", sc.season, sc.episode), "absolute", sc.absolute, "langMissing", ep.LangMissing)
 	results := s.episodeReleases(ctx, sr.Title, ep, kind, sc)
-	if best, ok := s.pickBest(ctx, results, kind); ok && s.shouldGrabUpgrade(cfg, ideal, curName, best.Title, ep.LangMissing) {
-		_, _ = s.grabBest(ctx, best, "episode", ep.ID, true)
+	log.Info("upgrade: searched", "queries", episodeQueries(sr.Title, ep, sc), "candidates", len(results))
+	best, ok := s.pickBest(ctx, results, kind)
+	if !ok {
+		log.Info("upgrade: no acceptable release (all rejected or KB-verified wrong)")
+		return
+	}
+	grab := s.shouldGrabUpgrade(cfg, ideal, curName, best.Title, ep.LangMissing)
+	log.Info("upgrade: decision", "best", best.Title, "current", curName,
+		"bestHasIdealLang", languageSatisfied(best.Title, ideal, cfg.RequireAnyLanguage), "grab", grab)
+	if grab {
+		if _, err := s.grabBest(ctx, best, "episode", ep.ID, true); err != nil {
+			log.Warn("upgrade: grab failed", "release", best.Title, "error", err)
+		} else {
+			log.Info("upgrade: grabbed", "release", best.Title)
+		}
 	}
 }
 
