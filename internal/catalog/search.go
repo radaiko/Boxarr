@@ -5,9 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -33,8 +31,6 @@ type liveSearcher struct{ set *settings.Store }
 func (l liveSearcher) Search(ctx context.Context, p prowlarr.SearchParams) ([]prowlarr.ReleaseResource, error) {
 	return l.set.Prowlarr().Search(ctx, p)
 }
-
-var searchHTTP = &http.Client{Timeout: 60 * time.Second}
 
 // SearchWantedForMovie searches Prowlarr for a monitored, file-less movie and
 // grabs the best-scoring release (FR-SR-4 / Seerr searchForMovie).
@@ -259,7 +255,7 @@ func (s *Service) grabBest(ctx context.Context, rr prowlarr.ReleaseResource, med
 		if rr.MagnetURL != "" {
 			jb.TorrentMagnet = rr.MagnetURL
 		} else if rr.DownloadURL != "" {
-			b, err := fetchArtifact(ctx, rr.DownloadURL)
+			b, err := prowlarr.FetchArtifact(ctx, rr.DownloadURL, s.set.ProwlarrURL(), s.set.ProwlarrAPIKey())
 			if err != nil {
 				return nil, err
 			}
@@ -272,7 +268,7 @@ func (s *Service) grabBest(ctx context.Context, rr prowlarr.ReleaseResource, med
 	if rr.DownloadURL == "" {
 		return nil, fmt.Errorf("usenet release has no download url")
 	}
-	b, err := fetchArtifact(ctx, rr.DownloadURL)
+	b, err := prowlarr.FetchArtifact(ctx, rr.DownloadURL, s.set.ProwlarrURL(), s.set.ProwlarrAPIKey())
 	if err != nil {
 		return nil, err
 	}
@@ -299,20 +295,4 @@ func (s *Service) insertJob(ctx context.Context, jb *job.Job) (*job.Job, error) 
 
 func (s *Service) logSearchErr(q string, err error) {
 	slog.Default().Warn("catalog: search error", "query", q, "error", err)
-}
-
-func fetchArtifact(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := searchHTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
-	}
-	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 }

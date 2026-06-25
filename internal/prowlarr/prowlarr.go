@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -151,4 +153,83 @@ func (c *Client) do(ctx context.Context, path string) ([]byte, error) {
 		return nil, fmt.Errorf("prowlarr GET %s: status %d", path, resp.StatusCode)
 	}
 	return body, nil
+}
+
+// artifactBrowserUA mimics a real browser so Cloudflare-fronted indexers (reached
+// via Prowlarr's redirect) allow the download. The default Go user-agent trips
+// Cloudflare's bot check and gets a 403 challenge page; this is the same identity
+// FlareSolverr presents for the *arr stack.
+const artifactBrowserUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+var artifactHTTP = &http.Client{Timeout: 60 * time.Second}
+
+// FetchArtifact downloads a release artifact (.nzb / .torrent) from a Prowlarr
+// download URL. Prowlarr 301-redirects usenet downloads to the real indexer, which
+// is often behind Cloudflare, so we present a browser identity (User-Agent + Accept
+// headers, which Go preserves across the cross-host redirect). When the URL points
+// at the configured Prowlarr, we also send its API key. Returns a clear error when
+// Cloudflare blocks the request so the cause is obvious in logs/toasts.
+func FetchArtifact(ctx context.Context, rawURL, prowlarrBaseURL, apiKey string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", artifactBrowserUA)
+	req.Header.Set("Accept", "application/x-nzb,application/x-bittorrent,application/octet-stream,*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	if base := strings.TrimRight(prowlarrBaseURL, "/"); base != "" && apiKey != "" && strings.HasPrefix(rawURL, base) {
+		req.Header.Set("X-Api-Key", apiKey)
+	}
+	resp, err := artifactHTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	// resp.Request is the final request after redirects — the host that actually
+	// served the response (Prowlarr redirects out to the indexer for NZBs).
+	finalHost := ""
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalHost = resp.Request.URL.Host
+	}
+	ct := resp.Header.Get("Content-Type")
+	cf := looksCloudflare(body, resp.Header)
+	if resp.StatusCode >= 400 {
+		msg := strings.TrimSpace(string(body))
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		slog.Default().Warn("artifact download failed", "finalHost", finalHost,
+			"status", resp.StatusCode, "contentType", ct, "cloudflare", cf, "body", msg)
+		if cf {
+			return nil, fmt.Errorf("status %d: blocked by Cloudflare at %s — that indexer needs FlareSolverr or a Cloudflare allow-rule", resp.StatusCode, finalHost)
+		}
+		if msg != "" {
+			return nil, fmt.Errorf("status %d (%s): %s", resp.StatusCode, finalHost, msg)
+		}
+		return nil, fmt.Errorf("status %d from %s", resp.StatusCode, finalHost)
+	}
+	// A 200 that is really an HTML error/challenge page, not a file.
+	if strings.Contains(ct, "text/html") {
+		slog.Default().Warn("artifact download returned HTML, not a file", "finalHost", finalHost, "contentType", ct, "cloudflare", cf)
+		if cf {
+			return nil, fmt.Errorf("blocked by Cloudflare at %s (challenge page) — that indexer needs FlareSolverr or a Cloudflare allow-rule", finalHost)
+		}
+		return nil, fmt.Errorf("got an HTML page from %s (not an NZB/torrent — check the indexer download/auth)", finalHost)
+	}
+	return body, nil
+}
+
+// looksCloudflare reports whether a response is a Cloudflare block/challenge page
+// (mirrors Prowlarr's CloudFlareDetectionService markers).
+func looksCloudflare(body []byte, hdr http.Header) bool {
+	if strings.Contains(strings.ToLower(hdr.Get("Server")), "cloudflare") {
+		return true
+	}
+	b := strings.ToLower(string(body))
+	return strings.Contains(b, "just a moment") ||
+		strings.Contains(b, "attention required") ||
+		strings.Contains(b, "error code: 1020") ||
+		strings.Contains(b, "/cdn-cgi/") ||
+		strings.Contains(b, "no-js ie6 oldie")
 }
