@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"strings"
 
 	"github.com/radaiko/boxarr/internal/selection"
 )
@@ -121,19 +122,51 @@ func (s *Store) SelectionConfigFor(kind string) selection.Config {
 		cfg.RequireAnyLanguage = s.boolv(KeySelectAnimeRequireAny, s.seed.SelectAnimeRequireAny)
 		cfg.PreferEnglishSubs = s.boolv(KeySelectAnimePreferSubs, s.seed.SelectAnimePreferSubs)
 	}
-	// Learned group tendencies: groups verified to ship the top preferred language
-	// (from the release-language knowledge base) get a likelihood bonus in scoring.
-	if top := topLang(cfg.PreferredLanguages); top != "" {
-		if groups, err := s.db.GroupsProvidingLanguage(context.Background(), top); err == nil && len(groups) > 0 {
-			cfg.LikelyLanguageGroups = groups
+	// Normalize language codes to upper-case: DetectLanguages emits upper-case
+	// display codes (DE/EN/MULTI) and the score compares them case-sensitively, so a
+	// lower-case override (e.g. "de") would otherwise silently break scoring.
+	cfg.RequiredLanguages = upperAll(cfg.RequiredLanguages)
+	cfg.PreferredLanguages = upperAll(cfg.PreferredLanguages)
+
+	// Learned group tendencies: groups that RELIABLY ship a preferred language — at
+	// least LikelyGroupMinRatio of their verified downloads, over at least
+	// LikelyGroupMinSample releases — get a likelihood bonus in scoring, raising the
+	// chance of getting the right language on the first try. A high bar (90%) avoids
+	// boosting groups that only occasionally happen to include the language. We union
+	// the qualifying groups across ALL preferred languages (not just the top), so the
+	// bonus matches the per-language "trusted" badge in the Languages UI.
+	groups := map[string]bool{}
+	for _, lang := range cfg.PreferredLanguages {
+		stats, err := s.db.GroupLanguageStats(context.Background(), lang)
+		if err != nil {
+			continue
 		}
+		for _, st := range stats {
+			if st.Total >= LikelyGroupMinSample && st.Ratio >= LikelyGroupMinRatio {
+				groups[st.Group] = true
+			}
+		}
+	}
+	if len(groups) > 0 {
+		cfg.LikelyLanguageGroups = groups
 	}
 	return cfg
 }
 
-func topLang(langs []string) string {
-	if len(langs) == 0 {
-		return ""
+// Thresholds for treating a release group as a reliable source of a language
+// (learned from the release-language knowledge base). Shared with the Languages
+// UI so its "trusted" badge matches the groups scoring rewards.
+const (
+	LikelyGroupMinRatio  = 0.90 // ≥90% of the group's verified releases carry the language
+	LikelyGroupMinSample = 3    // ...over at least this many verified releases
+)
+
+func upperAll(langs []string) []string {
+	out := make([]string, 0, len(langs))
+	for _, l := range langs {
+		if v := strings.ToUpper(strings.TrimSpace(l)); v != "" {
+			out = append(out, v)
+		}
 	}
-	return langs[0]
+	return out
 }

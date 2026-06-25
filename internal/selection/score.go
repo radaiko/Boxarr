@@ -239,12 +239,19 @@ func (cfg Config) Score(r Release) int {
 				s += cfg.WeightLanguage
 			}
 		}
-		// "Highest chance of <top language>": when the top preferred language isn't
-		// explicitly tagged, a MULTi release — or one from a group empirically
-		// verified to ship that language — likely still carries it, so give it a
-		// partial bonus (below an explicitly-tagged release). The Plex check
-		// verifies after download and re-searches if it turns out to be missing.
-		if len(cfg.PreferredLanguages) > 0 && !contains(langs, cfg.PreferredLanguages[0]) {
+		// "Highest chance of a preferred language": when NONE of the preferred
+		// languages is explicitly tagged, a MULTi release — or one from a group
+		// empirically verified to reliably ship a preferred language — likely still
+		// carries it, so give it a partial bonus (below an explicitly-tagged release).
+		// The Plex check verifies after download and re-searches if it's missing.
+		anyPreferredTagged := false
+		for _, pl := range cfg.PreferredLanguages {
+			if contains(langs, pl) {
+				anyPreferredTagged = true
+				break
+			}
+		}
+		if len(cfg.PreferredLanguages) > 0 && !anyPreferredTagged {
 			likelyGroup := false
 			if len(cfg.LikelyLanguageGroups) > 0 {
 				if p, err := release.ParseRelease(r.Title); err == nil && p != nil && p.Group != "" {

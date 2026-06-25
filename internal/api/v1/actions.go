@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/radaiko/boxarr/internal/logbuf"
+	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/task"
 )
 
@@ -110,15 +112,62 @@ func (h *Handler) triggerLibraryRefresh(w http.ResponseWriter, r *http.Request) 
 	h.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 }
 
-// releaseLanguages returns the verified release→language knowledge base (the real
-// audio/subtitle languages observed after download), for display + export.
+// groupLangStatDTO is a release group's reliability for one favorited language.
+type groupLangStatDTO struct {
+	Group   string  `json:"group"`
+	Total   int     `json:"total"`
+	InLang  int     `json:"inLang"`
+	Ratio   float64 `json:"ratio"`
+	Trusted bool    `json:"trusted"` // meets the scoring bar (≥90% over ≥3 releases)
+}
+
+// releaseLanguages returns the verified release→language knowledge base plus, per
+// favorited language, each release group's reliability at shipping it.
 func (h *Handler) releaseLanguages(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.deps.Store.ListReleaseLangs(r.Context(), 1000)
+	ctx := r.Context()
+	rows, err := h.deps.Store.ListReleaseLangs(ctx, 1000)
 	if err != nil {
 		h.serverError(w, "listing release languages", err)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"items": rows, "total": len(rows)})
+	// Per favorited language, which groups reliably ship it (counts + ratio). The
+	// "trusted" groups are exactly the ones scoring rewards with a likelihood bonus.
+	favs := favoriteLanguages(h.deps.Settings)
+	groupStats := map[string][]groupLangStatDTO{}
+	for _, lang := range favs {
+		gs, gerr := h.deps.Store.GroupLanguageStats(ctx, lang)
+		if gerr != nil {
+			continue
+		}
+		list := make([]groupLangStatDTO, 0, len(gs))
+		for _, g := range gs {
+			list = append(list, groupLangStatDTO{
+				Group: g.Group, Total: g.Total, InLang: g.InLang, Ratio: g.Ratio,
+				Trusted: g.Total >= settings.LikelyGroupMinSample && g.Ratio >= settings.LikelyGroupMinRatio,
+			})
+		}
+		groupStats[lang] = list
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"items": rows, "total": len(rows), "favoriteLangs": favs, "groupStats": groupStats,
+	})
+}
+
+// favoriteLanguages is the de-duplicated union of preferred languages across all
+// media kinds — the languages the user cares about getting on the first try.
+func favoriteLanguages(set *settings.Store) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, kind := range []string{"movie", "series", "anime"} {
+		for _, l := range set.SelectionConfigFor(kind).PreferredLanguages {
+			l = strings.ToLower(strings.TrimSpace(l))
+			if l != "" && !seen[l] {
+				seen[l] = true
+				out = append(out, l)
+			}
+		}
+	}
+	return out
 }
 
 // runBackground runs fn on the task manager (so it survives the request), or

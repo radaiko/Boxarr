@@ -67,3 +67,23 @@ func TestSelectionConfigOverlaysDB(t *testing.T) {
 		t.Errorf("selection not in EffectiveNonSecret: %q / %q", eff[KeySelectMinSeeders], eff[KeySelectPreferredResolutions])
 	}
 }
+
+func TestSelectionConfigUppercasesLanguages(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	s, err := New(ctx, st, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A lower-case / spaced override must be normalized to upper-case so it matches
+	// DetectLanguages output (which the score compares case-sensitively).
+	_ = s.Set(ctx, KeySelectMovieLangPreferred, "de, en")
+	_ = s.Set(ctx, KeySelectMovieLangRequired, "de")
+	c := s.SelectionConfigFor("movie")
+	if len(c.PreferredLanguages) != 2 || c.PreferredLanguages[0] != "DE" || c.PreferredLanguages[1] != "EN" {
+		t.Errorf("preferred languages not upper-cased: %v", c.PreferredLanguages)
+	}
+	if len(c.RequiredLanguages) != 1 || c.RequiredLanguages[0] != "DE" {
+		t.Errorf("required languages not upper-cased: %v", c.RequiredLanguages)
+	}
+}

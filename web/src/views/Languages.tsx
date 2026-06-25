@@ -10,17 +10,38 @@ interface RL {
   source: string
 }
 
+interface GroupStat {
+  group: string
+  total: number
+  inLang: number
+  ratio: number
+  trusted: boolean // ≥90% of the group's releases ship the language (gets a scoring boost)
+}
+
+interface LangResponse {
+  items: RL[]
+  favoriteLangs?: string[]
+  groupStats?: Record<string, GroupStat[]>
+}
+
 // Languages is the verified release→language knowledge base: the real audio +
 // subtitle languages observed (via the Plex stream check) per downloaded release,
-// searchable, with a summary of which release groups ship each language.
+// searchable, plus per-group reliability for the favorited languages (the groups
+// that most often ship the right language — and which scoring now boosts).
 export function Languages() {
   const [items, setItems] = useState<RL[] | null>(null)
+  const [favs, setFavs] = useState<string[]>([])
+  const [groupStats, setGroupStats] = useState<Record<string, GroupStat[]>>({})
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
 
   useEffect(() => {
-    getJSON<{ items: RL[] }>('/releases/languages')
-      .then((r) => setItems(r.items ?? []))
+    getJSON<LangResponse>('/releases/languages')
+      .then((r) => {
+        setItems(r.items ?? [])
+        setFavs(r.favoriteLangs ?? [])
+        setGroupStats(r.groupStats ?? {})
+      })
       .catch((e: unknown) => setErr(String(e)))
   }, [])
 
@@ -47,7 +68,7 @@ export function Languages() {
     it.audioLangs.toLowerCase().includes(ql) ||
     it.subLangs.toLowerCase().includes(ql),
   )
-  const germanGroups = Object.keys(groupLangs).filter((g) => groupLangs[g].has('de')).sort()
+  const favStats = favs.filter((l) => (groupStats[l]?.length ?? 0) > 0)
 
   return (
     <section>
@@ -60,10 +81,11 @@ export function Languages() {
         </div>
       </div>
 
-      {germanGroups.length > 0 && (
-        <div className="lang-summary">
-          <span className="muted">Groups verified to ship German:</span>
-          {germanGroups.map((g) => <span key={g} className="meta-chip lang">{g}</span>)}
+      {favStats.length > 0 && (
+        <div className="group-reliability" style={{ marginBottom: 18 }}>
+          {favStats.map((lang) => (
+            <GroupReliability key={lang} lang={lang} stats={groupStats[lang]} />
+          ))}
         </div>
       )}
 
@@ -89,6 +111,49 @@ export function Languages() {
         </div>
       )}
     </section>
+  )
+}
+
+// GroupReliability shows, for one favorited language, which release groups most
+// often ship it (count + ratio). Groups ≥90% over ≥3 releases are "trusted" and
+// get a likelihood boost in search scoring.
+function GroupReliability({ lang, stats }: { lang: string; stats: GroupStat[] }) {
+  const top = stats.slice(0, 30)
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div className="muted" style={{ marginBottom: 6, fontSize: 13 }}>
+        Groups by <span className={`meta-chip lang${lang === 'de' ? ' de' : ''}`}>{lang}</span> reliability
+        <span style={{ fontSize: 11, opacity: 0.7, marginLeft: 6 }}>✓ trusted = boosted in search (≥90% over ≥3 releases)</span>
+      </div>
+      <div className="table-wrap">
+        <table className="tbl">
+          <thead><tr>
+            <th>Group</th>
+            <th style={{ width: 110 }}>{lang.toUpperCase()} / total</th>
+            <th style={{ width: 180 }}>Reliability</th>
+          </tr></thead>
+          <tbody>
+            {top.map((g) => (
+              <tr key={g.group}>
+                <td className="muted">
+                  {g.group}
+                  {g.trusted && <span className="chip instant" style={{ marginLeft: 8 }}>✓ trusted</span>}
+                </td>
+                <td>{g.inLang} / {g.total}</td>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, height: 6, background: '#2a2f3a', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.round(g.ratio * 100)}%`, height: '100%', background: g.trusted ? '#3fb950' : '#6b7280' }} />
+                    </div>
+                    <span style={{ fontSize: 12, minWidth: 34, textAlign: 'right' }}>{Math.round(g.ratio * 100)}%</span>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
 

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -52,6 +53,52 @@ func (s *Store) GroupsProvidingLanguage(ctx context.Context, lang string) (map[s
 		}
 		out[g] = true
 	}
+	return out, rows.Err()
+}
+
+// GroupLangStat is a release group's verified language tendency: of Total recorded
+// releases by the group, InLang carry the language (as audio or subtitle).
+type GroupLangStat struct {
+	Group  string  `json:"group"`
+	Total  int     `json:"total"`
+	InLang int     `json:"inLang"`
+	Ratio  float64 `json:"ratio"`
+}
+
+// GroupLanguageStats returns, per release group, how many recorded releases carry
+// lang versus the group's total — the basis for "this group reliably ships
+// <lang>". Sorted by InLang desc, then Ratio desc. lang is a 2-letter code.
+func (s *Store) GroupLanguageStats(ctx context.Context, lang string) ([]GroupLangStat, error) {
+	lang = strings.ToLower(lang)
+	like := "%," + lang + ",%"
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT release_group, COUNT(*) AS total,
+		   SUM(CASE WHEN (',' || audio_langs || ',') LIKE ? OR (',' || sub_langs || ',') LIKE ?
+		            THEN 1 ELSE 0 END) AS in_lang
+		 FROM release_lang
+		 WHERE release_group <> ''
+		 GROUP BY release_group`, like, like)
+	if err != nil {
+		return nil, fmt.Errorf("querying group language stats: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []GroupLangStat
+	for rows.Next() {
+		var g GroupLangStat
+		if err := rows.Scan(&g.Group, &g.Total, &g.InLang); err != nil {
+			return nil, err
+		}
+		if g.Total > 0 {
+			g.Ratio = float64(g.InLang) / float64(g.Total)
+		}
+		out = append(out, g)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].InLang != out[j].InLang {
+			return out[i].InLang > out[j].InLang
+		}
+		return out[i].Ratio > out[j].Ratio
+	})
 	return out, rows.Err()
 }
 
