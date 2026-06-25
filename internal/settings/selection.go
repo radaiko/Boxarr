@@ -128,15 +128,16 @@ func (s *Store) SelectionConfigFor(kind string) selection.Config {
 	cfg.RequiredLanguages = upperAll(cfg.RequiredLanguages)
 	cfg.PreferredLanguages = upperAll(cfg.PreferredLanguages)
 
-	// Learned group tendencies: groups that RELIABLY ship a preferred language — at
+	// Learned group tendencies: groups that RELIABLY ship a wanted language — at
 	// least LikelyGroupMinRatio of their verified downloads, over at least
 	// LikelyGroupMinSample releases — get a likelihood bonus in scoring, raising the
 	// chance of getting the right language on the first try. A high bar (90%) avoids
-	// boosting groups that only occasionally happen to include the language. We union
-	// the qualifying groups across ALL preferred languages (not just the top), so the
-	// bonus matches the per-language "trusted" badge in the Languages UI.
+	// boosting groups that only occasionally happen to include the language. "Wanted"
+	// is the union of REQUIRED and PREFERRED languages: a required language (e.g. DE)
+	// is the user's strongest preference, so its reliable groups must be learned too —
+	// and this matches the languages the Languages UI shows.
 	groups := map[string]bool{}
-	for _, lang := range cfg.PreferredLanguages {
+	for _, lang := range wantedLanguages(cfg) {
 		stats, err := s.db.GroupLanguageStats(context.Background(), lang)
 		if err != nil {
 			continue
@@ -151,6 +152,22 @@ func (s *Store) SelectionConfigFor(kind string) selection.Config {
 		cfg.LikelyLanguageGroups = groups
 	}
 	return cfg
+}
+
+// wantedLanguages is the de-duplicated union of a config's required + preferred
+// languages — every language the user cares about getting, required first.
+func wantedLanguages(cfg selection.Config) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, list := range [][]string{cfg.RequiredLanguages, cfg.PreferredLanguages} {
+		for _, l := range list {
+			if l != "" && !seen[l] {
+				seen[l] = true
+				out = append(out, l)
+			}
+		}
+	}
+	return out
 }
 
 // Thresholds for treating a release group as a reliable source of a language

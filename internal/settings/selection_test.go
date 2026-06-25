@@ -87,3 +87,22 @@ func TestSelectionConfigUppercasesLanguages(t *testing.T) {
 		t.Errorf("required languages not upper-cased: %v", c.RequiredLanguages)
 	}
 }
+
+func TestLikelyGroupsLearnRequiredLanguage(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	// A group reliable for German (4/4) — German is REQUIRED, English merely preferred.
+	for _, n := range []string{"a", "b", "c", "d"} {
+		_ = st.UpsertReleaseLang(ctx, "Film."+n+".German.DL-WAYNE", "WAYNE", []string{"de"}, nil, "plex")
+	}
+	s, err := New(ctx, st, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Set(ctx, KeySelectMovieLangRequired, "DE")
+	_ = s.Set(ctx, KeySelectMovieLangPreferred, "EN")
+	c := s.SelectionConfigFor("movie")
+	if !c.LikelyLanguageGroups["wayne"] {
+		t.Errorf("WAYNE (reliable for required DE) should be a likely-language group: %v", c.LikelyLanguageGroups)
+	}
+}

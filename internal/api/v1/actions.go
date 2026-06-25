@@ -153,17 +153,22 @@ func (h *Handler) releaseLanguages(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// favoriteLanguages is the de-duplicated union of preferred languages across all
-// media kinds — the languages the user cares about getting on the first try.
+// favoriteLanguages is the de-duplicated union of required + preferred languages
+// across all media kinds — every language the user cares about getting (a required
+// language like DE is the strongest preference). Required first, so the user's
+// must-have language leads the Languages view. Lower-cased to match the KB.
 func favoriteLanguages(set *settings.Store) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, kind := range []string{"movie", "series", "anime"} {
-		for _, l := range set.SelectionConfigFor(kind).PreferredLanguages {
-			l = strings.ToLower(strings.TrimSpace(l))
-			if l != "" && !seen[l] {
-				seen[l] = true
-				out = append(out, l)
+		cfg := set.SelectionConfigFor(kind)
+		for _, list := range [][]string{cfg.RequiredLanguages, cfg.PreferredLanguages} {
+			for _, l := range list {
+				l = strings.ToLower(strings.TrimSpace(l))
+				if l != "" && !seen[l] {
+					seen[l] = true
+					out = append(out, l)
+				}
 			}
 		}
 	}
