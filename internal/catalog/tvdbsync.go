@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/radaiko/boxarr/internal/media"
+	"github.com/radaiko/boxarr/internal/metadata/tvdb"
 )
 
 // RefreshAllFromTVDB updates every series' episode numbering from TheTVDB (when a
@@ -58,35 +59,13 @@ func (s *Service) refreshSeriesFromTVDB(ctx context.Context, sr *media.Series) (
 	if err != nil {
 		return 0, err
 	}
-	byAir := map[string]tvdbEp{}
-	byAbs := map[int]tvdbEp{}
-	for _, e := range tvEps {
-		te := tvdbEp{season: e.SeasonNumber, episode: e.Number}
-		if e.AbsoluteNumber != nil {
-			te.absolute = *e.AbsoluteNumber
-		}
-		if e.Aired != "" {
-			byAir[e.Aired] = te
-		}
-		if te.absolute > 0 {
-			byAbs[te.absolute] = te
-		}
-	}
 	local, err := s.store.ListEpisodes(ctx, sr.ID)
 	if err != nil {
 		return 0, err
 	}
 	n := 0
-	for _, ep := range local {
-		te, ok := byAir[ep.AirDate]
-		if !ok || ep.AirDate == "" {
-			// Flat TMDB numbering: the episode number is the absolute number.
-			te, ok = byAbs[ep.EpisodeNumber]
-		}
-		if !ok || te.season == 0 {
-			continue
-		}
-		if err := s.store.SetEpisodeSceneNumbers(ctx, ep.ID, te.season, te.episode, te.absolute); err == nil {
+	for id, te := range resolveSceneMap(tvEps, local) {
+		if err := s.store.SetEpisodeSceneNumbers(ctx, id, te.season, te.episode, te.absolute); err == nil {
 			n++
 		}
 	}
@@ -94,3 +73,58 @@ func (s *Service) refreshSeriesFromTVDB(ctx context.Context, sr *media.Series) (
 }
 
 type tvdbEp struct{ season, episode, absolute int }
+
+// resolveSceneMap maps each local (TMDB-numbered) episode to its TheTVDB
+// (season, episode, absolute). It matches by, in order:
+//  1. a UNIQUE air date — reliable for weekly shows + anime;
+//  2. direct season+episode — standard series whose seasons align with TVDB;
+//  3. absolute number — flat TMDB numbering (anime: episode number == absolute).
+//
+// Air dates shared by more than one TVDB episode (a binge-drop season released on
+// one day) are dropped from the air-date index: otherwise every local episode
+// collapses onto the last TVDB episode with that date (the cause of "all episodes
+// show S01E04 / point to one file").
+func resolveSceneMap(tvEps []tvdb.Episode, local []*media.Episode) map[int64]tvdbEp {
+	byAir := map[string]tvdbEp{}
+	airCount := map[string]int{}
+	byAbs := map[int]tvdbEp{}
+	byNum := map[[2]int]tvdbEp{}
+	for _, e := range tvEps {
+		te := tvdbEp{season: e.SeasonNumber, episode: e.Number}
+		if e.AbsoluteNumber != nil {
+			te.absolute = *e.AbsoluteNumber
+		}
+		if e.Aired != "" {
+			byAir[e.Aired] = te
+			airCount[e.Aired]++
+		}
+		if te.absolute > 0 {
+			byAbs[te.absolute] = te
+		}
+		byNum[[2]int{e.SeasonNumber, e.Number}] = te
+	}
+	for date, c := range airCount {
+		if c > 1 {
+			delete(byAir, date) // ambiguous: a binge-drop season shares one date
+		}
+	}
+	out := make(map[int64]tvdbEp, len(local))
+	for _, ep := range local {
+		var te tvdbEp
+		var ok bool
+		if ep.AirDate != "" {
+			te, ok = byAir[ep.AirDate]
+		}
+		if !ok {
+			te, ok = byNum[[2]int{ep.SeasonNumber, ep.EpisodeNumber}]
+		}
+		if !ok {
+			te, ok = byAbs[ep.EpisodeNumber]
+		}
+		if !ok || te.season == 0 {
+			continue
+		}
+		out[ep.ID] = te
+	}
+	return out
+}
