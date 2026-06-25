@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	neturl "net/url"
 	"strings"
 	"time"
 
@@ -19,6 +18,11 @@ import (
 
 // grabHTTP fetches release artifacts (.nzb / .torrent) from Prowlarr's proxy URL.
 var grabHTTP = &http.Client{Timeout: 60 * time.Second}
+
+// browserUA is sent on artifact downloads: a Prowlarr instance behind Cloudflare
+// may "Browser Integrity Check" non-API paths (like /{id}/download) and 403 the
+// default Go user-agent. A browser UA usually passes that check.
+const browserUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 func (h *Handler) grabMovie(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.idParam(w, r)
@@ -143,17 +147,18 @@ func (h *Handler) fetchArtifact(ctx context.Context, rawURL string) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
+	// Present as a browser. Prowlarr 301-redirects usenet downloads to the real
+	// indexer (e.g. NZBFinder), which sits behind Cloudflare; the default Go
+	// user-agent trips Cloudflare's bot check and gets a 403 challenge page. A
+	// browser UA + Accept headers pass it — this is what FlareSolverr does for the
+	// *arr stack. Go preserves these headers across the cross-host redirect.
+	req.Header.Set("User-Agent", browserUA)
+	req.Header.Set("Accept", "application/x-nzb,application/x-bittorrent,application/octet-stream,*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	// When the download URL points at Prowlarr, authenticate: Prowlarr's /download
-	// proxy requires the API key, and the URL doesn't always embed it — a plain GET
-	// then 403s. Harmless on non-Prowlarr URLs.
-	prowlarrAuthed := false
+	// proxy requires the API key, and the URL doesn't always embed it.
 	if base := strings.TrimRight(h.deps.Settings.ProwlarrURL(), "/"); base != "" && strings.HasPrefix(rawURL, base) {
 		req.Header.Set("X-Api-Key", h.deps.Settings.ProwlarrAPIKey())
-		prowlarrAuthed = true
-	}
-	host := ""
-	if u, perr := neturl.Parse(rawURL); perr == nil {
-		host = u.Host
 	}
 	resp, err := grabHTTP.Do(req)
 	if err != nil {
@@ -161,23 +166,50 @@ func (h *Handler) fetchArtifact(ctx context.Context, rawURL string) ([]byte, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	// resp.Request is the LAST request after redirects — the host that actually
+	// served the response (Prowlarr redirects out to the indexer for NZBs).
+	finalHost := ""
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalHost = resp.Request.URL.Host
+	}
+	ct := resp.Header.Get("Content-Type")
 	if resp.StatusCode >= 400 {
 		msg := strings.TrimSpace(string(body))
 		if len(msg) > 200 {
 			msg = msg[:200]
 		}
-		// Log the source so we can tell whether Prowlarr or the indexer rejected it.
-		slog.Default().Warn("artifact download failed", "host", host, "prowlarrAuthed", prowlarrAuthed,
-			"status", resp.StatusCode, "contentType", resp.Header.Get("Content-Type"), "body", msg)
-		if msg != "" {
-			return nil, fmt.Errorf("status %d (%s): %s", resp.StatusCode, host, msg)
+		slog.Default().Warn("artifact download failed", "finalHost", finalHost,
+			"status", resp.StatusCode, "contentType", ct, "cloudflare", looksCloudflare(body, resp.Header), "body", msg)
+		if looksCloudflare(body, resp.Header) {
+			return nil, fmt.Errorf("status %d: Cloudflare blocked the download at %s — that indexer needs FlareSolverr or a Cloudflare allow-rule", resp.StatusCode, finalHost)
 		}
-		return nil, fmt.Errorf("status %d from %s", resp.StatusCode, host)
+		if msg != "" {
+			return nil, fmt.Errorf("status %d (%s): %s", resp.StatusCode, finalHost, msg)
+		}
+		return nil, fmt.Errorf("status %d from %s", resp.StatusCode, finalHost)
 	}
-	// Some indexers 200 with an error/HTML page instead of an NZB; reject those.
-	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "text/html") {
-		slog.Default().Warn("artifact download returned HTML, not a file", "host", host, "contentType", ct)
-		return nil, fmt.Errorf("got an HTML page from %s (not an NZB/torrent — check the indexer download/auth)", host)
+	// A 200 that's really an HTML error/challenge page, not a file.
+	if strings.Contains(ct, "text/html") {
+		slog.Default().Warn("artifact download returned HTML, not a file", "finalHost", finalHost,
+			"contentType", ct, "cloudflare", looksCloudflare(body, resp.Header))
+		if looksCloudflare(body, resp.Header) {
+			return nil, fmt.Errorf("blocked by Cloudflare at %s (challenge page) — that indexer needs FlareSolverr or a Cloudflare allow-rule", finalHost)
+		}
+		return nil, fmt.Errorf("got an HTML page from %s (not an NZB/torrent — check the indexer download/auth)", finalHost)
 	}
 	return body, nil
+}
+
+// looksCloudflare reports whether a response is a Cloudflare block/challenge page
+// (mirrors Prowlarr's CloudFlareDetectionService markers).
+func looksCloudflare(body []byte, hdr http.Header) bool {
+	if strings.Contains(strings.ToLower(hdr.Get("Server")), "cloudflare") {
+		return true
+	}
+	b := strings.ToLower(string(body))
+	return strings.Contains(b, "just a moment") ||
+		strings.Contains(b, "attention required") ||
+		strings.Contains(b, "error code: 1020") ||
+		strings.Contains(b, "/cdn-cgi/") ||
+		strings.Contains(b, "no-js ie6 oldie")
 }
