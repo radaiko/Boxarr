@@ -44,6 +44,15 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
   }
   const searchSeason = (n: number) =>
     runSearch(`/series/${id}/seasons/${n}/search`, `season:${n}`, `Season ${n}`)
+  async function toggleSeasonMonitor(n: number, monitored: boolean) {
+    try {
+      await putJSON(`/series/${id}/seasons/${n}/monitored`, { monitored })
+      toast(monitored ? `Season ${n} requested — searching for episodes.` : `Season ${n} no longer requested.`, 'ok')
+      reload()
+    } catch (e) {
+      toast(`Couldn't update Season ${n}: ${String(e)}`, 'err')
+    }
+  }
 
   async function grab(rel: Release) {
     const [kind, ref] = scope.split(':')
@@ -105,7 +114,12 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
           <div className="season-head season-toggle" onClick={() => toggleSeason(s.seasonNumber)}>
             <span className="muted" style={{ width: 14 }}>{collapsed.has(s.seasonNumber) ? '▸' : '▾'}</span>
             <h3>Season {s.seasonNumber}</h3>
-            <Status value={s.status} />
+            <button className={`status ${s.monitored ? 'wanted' : 'unmonitored'} link`}
+              title={s.monitored ? 'Requested — click to stop requesting this season' : 'Not requested — click to request this season'}
+              onClick={(e) => { e.stopPropagation(); void toggleSeasonMonitor(s.seasonNumber, !s.monitored) }}>
+              {s.monitored ? '✓ requested' : 'not requested'}
+            </button>
+            {s.monitored && <Status value={s.status} />}
             <span className="muted" style={{ fontSize: 12 }}>{s.episodes?.length ?? 0} eps</span>
             <button className="btn btn-sm" style={{ marginLeft: 'auto' }}
               onClick={(e) => { e.stopPropagation(); void searchSeason(s.seasonNumber) }}>
@@ -134,7 +148,7 @@ export function SeriesDetail({ id, onBack }: { id: number; onBack: () => void })
                     </td>
                     <td className="num" style={{ width: 110 }}>{ep.airDate || ''}</td>
                     <td className="muted" style={{ width: 120, fontSize: 11.5 }}>{ep.lastSearched ? `searched ${ago(ep.lastSearched)}` : ''}</td>
-                    <td style={{ width: 130 }}><Status value={ep.status} hasFile={ep.hasFile} /></td>
+                    <td style={{ width: 130 }}><Status value={ep.status} hasFile={ep.hasFile} monitored={ep.monitored} airDate={ep.airDate} /></td>
                     <td className="right" style={{ width: 110 }}>
                       {ep.status === 'failed'
                         ? <button className="btn btn-sm" onClick={() => void resetEpisode(ep)}><Icon name="refresh" /> Retry</button>

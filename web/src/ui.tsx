@@ -36,11 +36,35 @@ export function Icon({ name }: { name: string }) {
 }
 
 // Status renders the media-lifecycle state as a colored pill. hasFile always
-// reads as available regardless of the stored status.
-export function Status({ value, hasFile }: { value?: string; hasFile?: boolean }) {
-  const v = hasFile ? 'available' : (value || 'missing')
-  return <span className={`status ${v}`}>{v.replace('_', ' ')}</span>
+// reads as available. When episode context (monitored/airDate) is given it refines
+// the overloaded "missing" status into the clearer "not requested" (unmonitored),
+// "not aired" (monitored but future/unknown air date), or "wanted" (aired, no file).
+export function Status({ value, hasFile, monitored, airDate }: {
+  value?: string; hasFile?: boolean; monitored?: boolean; airDate?: string
+}) {
+  const s = displayState(value, hasFile, monitored, airDate)
+  return <span className={`status ${s.cls}`}>{s.label}</span>
 }
+
+function displayState(value?: string, hasFile?: boolean, monitored?: boolean, airDate?: string):
+  { cls: string; label: string } {
+  if (hasFile) return { cls: 'available', label: 'available' }
+  const v = value || 'missing'
+  // Active acquisition + terminal states pass through unchanged.
+  if (v === 'downloading') return { cls: 'downloading', label: 'downloading' }
+  if (v === 'queued') return { cls: 'queued', label: 'queued' }
+  if (v === 'searching') return { cls: 'searching', label: 'searching' }
+  if (v === 'available') return { cls: 'available', label: 'available' }
+  if (v === 'failed') return { cls: 'failed', label: 'failed' }
+  if (v === 'expired_broken') return { cls: 'expired_broken', label: 'broken' }
+  // "wanted"/"missing" — refine only with episode context (monitored provided).
+  if (monitored === false) return { cls: 'unmonitored', label: 'not requested' }
+  if (monitored === true && (!airDate || airDate > todayISO())) return { cls: 'unaired', label: 'not aired' }
+  if (monitored === undefined) return { cls: v, label: v.replace('_', ' ') } // rollup: keep raw
+  return { cls: 'wanted', label: 'wanted' }
+}
+
+function todayISO(): string { return new Date().toISOString().slice(0, 10) }
 
 export function Empty({ icon, title, hint, action }: { icon: string; title: string; hint?: string; action?: ReactNode }) {
   return (
