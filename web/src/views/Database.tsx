@@ -36,13 +36,14 @@ interface LangResponse {
 // subtitle languages observed (via the Plex stream check) per downloaded release,
 // searchable, plus per-group reliability for the favorited languages (the groups
 // that most often ship the right language — and which scoring now boosts).
-export function Languages() {
+export function Database() {
   const [items, setItems] = useState<RL[] | null>(null)
   const [favs, setFavs] = useState<string[]>([])
   const [groupStats, setGroupStats] = useState<Record<string, GroupStat[]>>({})
   const [blocklist, setBlocklist] = useState<BlocklistEntry[]>([])
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
+  const [tab, setTab] = useState<'releases' | 'groups' | 'failed'>('releases')
 
   function load() {
     getJSON<LangResponse>('/releases/languages')
@@ -91,72 +92,94 @@ export function Languages() {
   )
   const favStats = favs.filter((l) => (groupStats[l]?.length ?? 0) > 0)
 
+  const tabs = [
+    { id: 'releases' as const, label: 'Releases', count: items.length },
+    { id: 'groups' as const, label: 'Groups', count: Object.keys(groupLangs).length },
+    { id: 'failed' as const, label: 'Failed', count: blocklist.length },
+  ]
+
   return (
     <section>
-      <div className="row-between" style={{ marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
-        <span className="muted">{items.length} verified release{items.length === 1 ? '' : 's'} · {Object.keys(groupLangs).length} groups</span>
-        <div className="search-box">
-          <Icon name="search" />
-          <input className="input" type="search" placeholder="Filter by release, group, or language…" value={q}
-            onChange={(e) => setQ(e.target.value)} />
-        </div>
+      <div className="dash-actions" style={{ marginBottom: 16 }}>
+        {tabs.map((t) => (
+          <button key={t.id} className={`btn btn-sm${tab === t.id ? ' btn-primary' : ''}`} onClick={() => setTab(t.id)}>
+            {t.label} <span style={{ opacity: 0.7, marginLeft: 4 }}>{t.count}</span>
+          </button>
+        ))}
       </div>
 
-      {favStats.length > 0 && (
-        <div className="group-reliability" style={{ marginBottom: 18 }}>
-          {favStats.map((lang) => (
-            <GroupReliability key={lang} lang={lang} stats={groupStats[lang]} />
-          ))}
-        </div>
+      {tab === 'releases' && (
+        <>
+          <div className="row-between" style={{ marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
+            <span className="muted">{items.length} verified release{items.length === 1 ? '' : 's'} · the real audio/subtitle languages observed in Plex</span>
+            <div className="search-box">
+              <Icon name="search" />
+              <input className="input" type="search" placeholder="Filter by release, group, or language…" value={q}
+                onChange={(e) => setQ(e.target.value)} />
+            </div>
+          </div>
+          {items.length === 0 ? (
+            <Empty icon="languages" title="No verified languages yet"
+              hint="After Boxarr checks a download's tracks in Plex, the real audio + subtitle languages are recorded here." />
+          ) : (
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr><th>Release</th><th style={{ width: 140 }}>Group</th><th style={{ width: 150 }}>Audio</th><th style={{ width: 150 }}>Subtitles</th><th style={{ width: 80 }}>Source</th></tr></thead>
+                <tbody>
+                  {shown.map((it) => (
+                    <tr key={it.releaseName}>
+                      <td className="rel-title">{it.releaseName}</td>
+                      <td className="muted">{it.releaseGroup || '—'}</td>
+                      <td><LangChips csv={it.audioLangs} /></td>
+                      <td><LangChips csv={it.subLangs} /></td>
+                      <td className="muted" style={{ fontSize: 12 }}>{it.source}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
-      {items.length === 0 ? (
-        <Empty icon="languages" title="No verified languages yet"
-          hint="After Boxarr checks a download's tracks in Plex, the real audio + subtitle languages are recorded here." />
-      ) : (
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>Release</th><th style={{ width: 140 }}>Group</th><th style={{ width: 150 }}>Audio</th><th style={{ width: 150 }}>Subtitles</th><th style={{ width: 80 }}>Source</th></tr></thead>
-            <tbody>
-              {shown.map((it) => (
-                <tr key={it.releaseName}>
-                  <td className="rel-title">{it.releaseName}</td>
-                  <td className="muted">{it.releaseGroup || '—'}</td>
-                  <td><LangChips csv={it.audioLangs} /></td>
-                  <td><LangChips csv={it.subLangs} /></td>
-                  <td className="muted" style={{ fontSize: 12 }}>{it.source}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {tab === 'groups' && (
+        favStats.length > 0 ? (
+          <div className="group-reliability">
+            {favStats.map((lang) => <GroupReliability key={lang} lang={lang} stats={groupStats[lang]} />)}
+          </div>
+        ) : (
+          <Empty icon="languages" title="No group reliability yet"
+            hint="As Plex verifies downloads, Boxarr learns which release groups reliably ship your preferred languages and boosts them in search." />
+        )
       )}
 
-      {blocklist.length > 0 && (
-        <div style={{ marginTop: 22 }}>
-          <div className="muted" style={{ marginBottom: 6, fontSize: 13 }}>
-            Failed releases <span className="status broken" style={{ marginLeft: 6 }}>{blocklist.length}</span>
-            <span style={{ fontSize: 11, opacity: 0.7, marginLeft: 6 }}>
-              — blocklisted after a failed download; skipped on re-search. Remove to allow grabbing again.
-            </span>
-          </div>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead><tr><th>Release</th><th style={{ width: 240 }}>Reason</th><th style={{ width: 150 }}>When</th><th className="grab-col" /></tr></thead>
-              <tbody>
-                {blocklist.map((b) => (
-                  <tr key={b.releaseName}>
-                    <td className="rel-title">{b.releaseName}</td>
-                    <td className="muted" style={{ fontSize: 12 }}>{b.reason || '—'}</td>
-                    <td className="muted" style={{ fontSize: 12 }}>{b.createdAt}</td>
-                    <td><button className="btn btn-sm" title="Remove from blocklist (allow grabbing again)"
-                      onClick={() => void unblock(b.releaseName)}><Icon name="trash" /> Remove</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {tab === 'failed' && (
+        <>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+            Releases blocklisted after a failed download — skipped on re-search so a different release is grabbed. Remove one to allow grabbing it again.
+          </p>
+          {blocklist.length === 0 ? (
+            <Empty icon="webdav" title="No failed releases"
+              hint="Releases that fail to download (e.g. an incomplete usenet NZB) appear here automatically and are skipped on the next search." />
+          ) : (
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr><th>Release</th><th style={{ width: 240 }}>Reason</th><th style={{ width: 150 }}>When</th><th className="grab-col" /></tr></thead>
+                <tbody>
+                  {blocklist.map((b) => (
+                    <tr key={b.releaseName}>
+                      <td className="rel-title">{b.releaseName}</td>
+                      <td className="muted" style={{ fontSize: 12 }}>{b.reason || '—'}</td>
+                      <td className="muted" style={{ fontSize: 12 }}>{b.createdAt}</td>
+                      <td><button className="btn btn-sm" title="Remove from blocklist (allow grabbing again)"
+                        onClick={() => void unblock(b.releaseName)}><Icon name="trash" /> Remove</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </section>
   )

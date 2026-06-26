@@ -99,7 +99,7 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
           onClick={() => onNavigate('Movies')} />
         <StatCard label="Wrong language" value={`${wrongLang}`}
           sub={`${c.wrongLangMovies ?? 0} movies · ${c.wrongLangEpisodes ?? 0} episodes`}
-          onClick={() => onNavigate('Languages')} />
+          onClick={() => onNavigate('Database')} />
       </div>
 
       <div className="dash-cols">

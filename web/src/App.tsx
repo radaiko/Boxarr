@@ -8,7 +8,7 @@ import { Notifications } from './views/Notifications'
 import { TorBox } from './views/TorBox'
 import { Activity } from './views/Activity'
 import { Dashboard } from './views/Dashboard'
-import { Languages } from './views/Languages'
+import { Database } from './views/Database'
 import { Logs } from './views/Logs'
 import { Toaster } from './toast'
 
@@ -18,7 +18,7 @@ const NAV = [
   { id: 'Series', icon: 'series', group: 'Library' },
   { id: 'Anime', icon: 'anime', group: 'Library' },
   { id: 'TorBox', icon: 'storage', group: 'System' },
-  { id: 'Languages', icon: 'languages', group: 'System' },
+  { id: 'Database', icon: 'languages', group: 'System' },
   { id: 'Logs', icon: 'logs', group: 'System' },
   { id: 'Activity', icon: 'download', group: 'Activity' },
   { id: 'Notifications', icon: 'notifications', group: 'Activity' },
@@ -106,7 +106,7 @@ export function App() {
           {view === 'Series' && <Series openId={openFor('Series')?.id} openSeq={openFor('Series')?.seq} />}
           {view === 'Anime' && <Series anime openId={openFor('Anime')?.id} openSeq={openFor('Anime')?.seq} />}
           {view === 'TorBox' && <TorBox onOpenCatalog={openCatalog} />}
-          {view === 'Languages' && <Languages />}
+          {view === 'Database' && <Database />}
           {view === 'Logs' && <Logs />}
           {view === 'Activity' && <Activity />}
           {view === 'Notifications' && <Notifications onOpenCatalog={openCatalog} />}
