@@ -171,12 +171,18 @@ func searchDue(releaseDate string, last *time.Time, now time.Time, cad cadence) 
 func (s *Service) pickBest(ctx context.Context, results []prowlarr.ReleaseResource, kind string) (prowlarr.ReleaseResource, bool) {
 	cfg := s.set.SelectionConfigFor(kind)
 	ideal := idealLangs(cfg)
+	// Releases that previously failed to download are hard-skipped, so an auto-retry
+	// grabs a different release instead of re-grabbing the broken one.
+	blocked, _ := s.store.BlocklistedGrabs(ctx)
 	type cand struct {
 		rr prowlarr.ReleaseResource
 		sc int
 	}
 	var cands []cand
 	for _, rr := range results {
+		if blocked[rr.Title] {
+			continue
+		}
 		sc := cfg.Score(selection.Release{
 			Title: rr.Title, Protocol: rr.Protocol, Size: rr.Size,
 			Seeders: rr.Seeders, Grabs: rr.Grabs, IndexerFlags: rr.IndexerFlags,

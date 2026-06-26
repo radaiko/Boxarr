@@ -78,14 +78,14 @@ func TestReconcileUpsertsAndFlagsUnknown(t *testing.T) {
 	}
 }
 
-func TestGrabFailedNotifiesAndMarksFailed(t *testing.T) {
+func TestGrabFailedBlocklistsAndRetries(t *testing.T) {
 	fake := &fakeTorBox{}
 	w, st, _ := testWorkers(t, fake)
 	ctx := context.Background()
 
 	// A movie with an in-flight torrent job that TorBox reports failed.
 	mid, _ := st.CreateMovie(ctx, &media.Movie{TMDBID: 7, Title: "M", Monitored: true, Status: media.MediaSearching})
-	id, _ := st.CreateJob(ctx, &job.Job{State: job.StateDownloading, Category: "movie", NZBName: "M",
+	id, _ := st.CreateJob(ctx, &job.Job{State: job.StateDownloading, Category: "movie", NZBName: "M.2024.1080p-GRP",
 		Protocol: "torrent", MediaType: "movie", MediaRef: mid})
 	jj, _ := st.GetJob(ctx, id)
 	jj.TorBoxID = 42
@@ -99,8 +99,13 @@ func TestGrabFailedNotifiesAndMarksFailed(t *testing.T) {
 	if got.State != job.StateFailed {
 		t.Fatalf("job should be failed, got %s", got.State)
 	}
-	if m, _ := st.GetMovie(ctx, mid); m.Status != media.MediaFailed {
-		t.Errorf("failed grab should mark movie failed (not silently retry), got %s", m.Status)
+	// New behavior: the broken release is blocklisted and the movie returns to
+	// wanted for an auto-retry with a different release.
+	if m, _ := st.GetMovie(ctx, mid); m.Status != media.MediaWanted {
+		t.Errorf("failed grab should return movie to wanted for retry, got %s", m.Status)
+	}
+	if set, _ := st.BlocklistedGrabs(ctx); !set["M.2024.1080p-GRP"] {
+		t.Errorf("the failed release should be blocklisted, got %v", set)
 	}
 	notes, _ := st.ListNotifications(ctx, false, 50)
 	found := false
@@ -110,6 +115,6 @@ func TestGrabFailedNotifiesAndMarksFailed(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("a failed grab should enqueue a grab_failed notification")
+		t.Error("a failed grab should still enqueue a grab_failed notification")
 	}
 }

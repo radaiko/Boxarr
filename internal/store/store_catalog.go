@@ -615,6 +615,29 @@ func (s *Store) DeleteMovie(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ResetMovieForRetry returns a failed movie to the wanted pool for an auto-retry:
+// clears the failed job link + the last-searched timestamp so the next auto-search
+// cycle re-searches it immediately (and, with the broken release blocklisted, grabs
+// a different one).
+func (s *Store) ResetMovieForRetry(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE movie SET status='wanted', job_id=NULL, last_searched_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`, id)
+	if err != nil {
+		return fmt.Errorf("resetting movie %d for retry: %w", id, err)
+	}
+	return nil
+}
+
+// ResetEpisodeForRetry is ResetMovieForRetry for an episode.
+func (s *Store) ResetEpisodeForRetry(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE episode SET status='wanted', job_id=NULL, last_searched_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`, id)
+	if err != nil {
+		return fmt.Errorf("resetting episode %d for retry: %w", id, err)
+	}
+	return nil
+}
+
 // SetMovieStatus is the narrow, targeted status flip the reconciler uses.
 func (s *Store) SetMovieStatus(ctx context.Context, id int64, st media.MediaStatus) error {
 	if _, err := s.db.ExecContext(ctx,
