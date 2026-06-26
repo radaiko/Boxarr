@@ -67,7 +67,7 @@ export function MovieDetail({ id, onBack }: { id: number; onBack: () => void }) 
           <h2>{movie.title}</h2>
           <div className="detail-meta">
             <span>{movie.year || '—'}</span>
-            <Status value={movie.status} hasFile={movie.hasFile} />
+            <Status value={movie.status} hasFile={movie.hasFile} monitored={movie.monitored} airDate={movie.releaseDate} kind="movie" />
           </div>
           {movie.overview && <p className="overview">{movie.overview}</p>}
           {movie.status === 'failed' && (

@@ -47,7 +47,7 @@ export function Movies({ openId, openSeq }: { openId?: number; openSeq?: number 
                 <span className="poster-meta">{m.year || '—'}</span>
                 {m.langMissing
                   ? <span className="status broken" title="No German/English audio or subtitles">lang?</span>
-                  : <Status value={m.status} hasFile={m.hasFile} />}
+                  : <Status value={m.status} hasFile={m.hasFile} monitored={m.monitored} airDate={m.releaseDate} kind="movie" />}
               </div>
             </button>
           ))}

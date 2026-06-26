@@ -39,14 +39,14 @@ export function Icon({ name }: { name: string }) {
 // reads as available. When episode context (monitored/airDate) is given it refines
 // the overloaded "missing" status into the clearer "not requested" (unmonitored),
 // "not aired" (monitored but future/unknown air date), or "wanted" (aired, no file).
-export function Status({ value, hasFile, monitored, airDate }: {
-  value?: string; hasFile?: boolean; monitored?: boolean; airDate?: string
+export function Status({ value, hasFile, monitored, airDate, kind }: {
+  value?: string; hasFile?: boolean; monitored?: boolean; airDate?: string; kind?: 'movie' | 'episode'
 }) {
-  const s = displayState(value, hasFile, monitored, airDate)
+  const s = displayState(value, hasFile, monitored, airDate, kind)
   return <span className={`status ${s.cls}`}>{s.label}</span>
 }
 
-function displayState(value?: string, hasFile?: boolean, monitored?: boolean, airDate?: string):
+function displayState(value?: string, hasFile?: boolean, monitored?: boolean, airDate?: string, kind?: 'movie' | 'episode'):
   { cls: string; label: string } {
   if (hasFile) return { cls: 'available', label: 'available' }
   const v = value || 'missing'
@@ -57,9 +57,12 @@ function displayState(value?: string, hasFile?: boolean, monitored?: boolean, ai
   if (v === 'available') return { cls: 'available', label: 'available' }
   if (v === 'failed') return { cls: 'failed', label: 'failed' }
   if (v === 'expired_broken') return { cls: 'expired_broken', label: 'broken' }
-  // "wanted"/"missing" — refine only with episode context (monitored provided).
+  // "wanted"/"missing" — refine only with item context (monitored provided). A
+  // movie not yet at its release date reads "not released"; an episode "not aired".
   if (monitored === false) return { cls: 'unmonitored', label: 'not requested' }
-  if (monitored === true && (!airDate || airDate > todayISO())) return { cls: 'unaired', label: 'not aired' }
+  if (monitored === true && (!airDate || airDate > todayISO())) {
+    return { cls: 'unaired', label: kind === 'movie' ? 'not released' : 'not aired' }
+  }
   if (monitored === undefined) return { cls: v, label: v.replace('_', ' ') } // rollup: keep raw
   return { cls: 'wanted', label: 'wanted' }
 }

@@ -90,6 +90,7 @@ export interface Movie {
   monitored: boolean
   status: string
   hasFile: boolean
+  releaseDate?: string
   langMissing?: boolean
   lastError?: string
   posterPath?: string
