@@ -6,6 +6,7 @@ import { toast } from '../toast'
 interface Counts {
   movies: number; series: number; anime: number; activeJobs: number; unreadNotifications: number
   missingMovies?: number; missingEpisodes?: number
+  wrongLangMovies?: number; wrongLangEpisodes?: number
 }
 interface StatusResp { version: string; counts: Counts }
 interface StorageResp {
@@ -51,6 +52,7 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
   const downloading = queue.filter((d) => d.state === 'downloading')
   const attention = notes.filter((n) => !n.read)
   const missing = (c.missingMovies ?? 0) + (c.missingEpisodes ?? 0)
+  const wrongLang = (c.wrongLangMovies ?? 0) + (c.wrongLangEpisodes ?? 0)
   const runningTasks = (activity?.tasks ?? []).filter((t) => t.state === 'running')
   const schedule = activity?.schedule ?? []
 
@@ -95,6 +97,9 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
         <StatCard label="Missing" value={`${missing}`}
           sub={`${c.missingMovies ?? 0} movies · ${c.missingEpisodes ?? 0} episodes`}
           onClick={() => onNavigate('Movies')} />
+        <StatCard label="Wrong language" value={`${wrongLang}`}
+          sub={`${c.wrongLangMovies ?? 0} movies · ${c.wrongLangEpisodes ?? 0} episodes`}
+          onClick={() => onNavigate('Languages')} />
       </div>
 
       <div className="dash-cols">

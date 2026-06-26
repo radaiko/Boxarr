@@ -187,6 +187,7 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	wantedEps, _ := h.deps.Store.WantedEpisodes(ctx)
+	wrongLangMovies, wrongLangEpisodes, _ := h.deps.Store.LangMissingCounts(ctx)
 	resp := map[string]any{
 		"version": h.deps.Version,
 		"counts": map[string]any{
@@ -197,6 +198,8 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 			"unreadNotifications": unread,
 			"missingMovies":       missingMovies,
 			"missingEpisodes":     len(wantedEps),
+			"wrongLangMovies":     wrongLangMovies,
+			"wrongLangEpisodes":   wrongLangEpisodes,
 		},
 	}
 	if h.deps.Health != nil {

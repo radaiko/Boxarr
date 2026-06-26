@@ -298,6 +298,19 @@ func (s *Store) SetMovieLangMissing(ctx context.Context, id int64, missing bool)
 	return nil
 }
 
+// LangMissingCounts returns how many movies and episodes are flagged as lacking an
+// acceptable language (the Plex stream-check found no required/preferred track) —
+// the dashboard "wrong language" summary.
+func (s *Store) LangMissingCounts(ctx context.Context) (movies, episodes int64, err error) {
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM movie WHERE lang_missing=1`).Scan(&movies); err != nil {
+		return 0, 0, fmt.Errorf("counting lang-missing movies: %w", err)
+	}
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode WHERE lang_missing=1`).Scan(&episodes); err != nil {
+		return 0, 0, fmt.Errorf("counting lang-missing episodes: %w", err)
+	}
+	return movies, episodes, nil
+}
+
 func b2iCat(b bool) int {
 	if b {
 		return 1

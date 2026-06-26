@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"testing"
+
+	"github.com/radaiko/boxarr/internal/media"
 )
 
 func TestReleaseLangKnowledge(t *testing.T) {
@@ -57,5 +59,30 @@ func TestGroupLanguageStats(t *testing.T) {
 	// Sorted by InLang desc: reliable (4) before mixed (1).
 	if len(stats) < 2 || stats[0].Group != "reliable" {
 		t.Errorf("expected reliable first by InLang, got %+v", stats)
+	}
+}
+
+func TestLangMissingCounts(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	mid, _ := st.CreateMovie(ctx, &media.Movie{TMDBID: 1, Title: "M", Monitored: true})
+	sid, _ := st.CreateSeries(ctx, &media.Series{TMDBID: 2, Title: "S", Monitored: true})
+	seasonID, _ := st.UpsertSeason(ctx, &media.Season{SeriesID: sid, SeasonNumber: 1})
+	e1, _ := st.UpsertEpisode(ctx, &media.Episode{SeriesID: sid, SeasonID: seasonID, SeasonNumber: 1, EpisodeNumber: 1})
+	e2, _ := st.UpsertEpisode(ctx, &media.Episode{SeriesID: sid, SeasonID: seasonID, SeasonNumber: 1, EpisodeNumber: 2})
+
+	if mv, ep, _ := st.LangMissingCounts(ctx); mv != 0 || ep != 0 {
+		t.Fatalf("baseline should be 0/0, got %d/%d", mv, ep)
+	}
+	_ = st.SetMovieLangMissing(ctx, mid, true)
+	_ = st.SetEpisodeLangMissing(ctx, e1, true)
+	_ = st.SetEpisodeLangMissing(ctx, e2, true)
+	_ = st.SetEpisodeLangMissing(ctx, e2, false) // flips back → not counted
+	mv, ep, err := st.LangMissingCounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mv != 1 || ep != 1 {
+		t.Errorf("got %d movies / %d episodes, want 1/1", mv, ep)
 	}
 }
