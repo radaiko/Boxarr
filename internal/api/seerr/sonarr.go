@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
@@ -210,6 +211,132 @@ func (h *Handler) addSeries(w http.ResponseWriter, r *http.Request) {
 		"seasonFolder": true, "rootFolderPath": sr.RootFolderPath, "titleSlug": slug(sr.Title),
 		"added": rfc3339(sr.AddedAt), "images": []any{}, "seasons": body.Seasons,
 	})
+}
+
+// updateSeries answers PUT /sonarr/api/v3/series — Seerr's re-request path for a
+// series already in the catalog (e.g. requesting additional seasons). It monitors
+// the requested seasons (cascading to their episodes) and returns the series.
+func (h *Handler) updateSeries(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var body struct {
+		ID        int64 `json:"id"`
+		TVDBID    int   `json:"tvdbId"`
+		Monitored bool  `json:"monitored"`
+		Seasons   []struct {
+			SeasonNumber int  `json:"seasonNumber"`
+			Monitored    bool `json:"monitored"`
+		} `json:"seasons"`
+		AddOptions struct {
+			SearchForMissingEpisodes bool `json:"searchForMissingEpisodes"`
+		} `json:"addOptions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body"})
+		return
+	}
+	var s *media.Series
+	if body.ID != 0 {
+		s, _ = h.deps.Store.GetSeries(ctx, body.ID)
+	}
+	if s == nil && body.TVDBID != 0 {
+		s, _ = h.deps.Store.GetSeriesByTVDB(ctx, int64(body.TVDBID))
+	}
+	if s == nil {
+		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "series not found"})
+		return
+	}
+	for _, bs := range body.Seasons {
+		if bs.Monitored {
+			h.monitorSeason(ctx, s.ID, bs.SeasonNumber)
+		}
+	}
+	if body.AddOptions.SearchForMissingEpisodes {
+		sid := s.ID
+		h.searchOnAdd(ctx, func(c contextT) error { return h.deps.Catalog.SearchWantedForSeries(c, sid) })
+	}
+	eps, _ := h.deps.Store.ListEpisodes(ctx, s.ID)
+	h.writeJSON(w, http.StatusOK, h.seriesResource(s, eps))
+}
+
+// monitorSeason monitors a (scene-aware) season and cascades to its episodes so
+// the auto-searcher picks up the newly requested season.
+func (h *Handler) monitorSeason(ctx contextT, seriesID int64, seasonNum int) {
+	seasons, _ := h.deps.Store.ListSeasons(ctx, seriesID)
+	for _, ss := range seasons {
+		if ss.SeasonNumber == seasonNum {
+			_ = h.deps.Store.SetSeasonMonitored(ctx, ss.ID, true)
+		}
+	}
+	today := time.Now().UTC().Format("2006-01-02")
+	eps, _ := h.deps.Store.ListEpisodes(ctx, seriesID)
+	for _, e := range eps {
+		ds := e.SeasonNumber
+		if e.SceneSeason > 0 {
+			ds = e.SceneSeason
+		}
+		if ds != seasonNum {
+			continue
+		}
+		e.Monitored = true
+		if !e.HasFile && e.AirDate != "" && e.AirDate <= today {
+			e.Status = media.MediaWanted
+		}
+		_ = h.deps.Store.UpdateEpisode(ctx, e)
+	}
+}
+
+// episodeList answers GET /sonarr/api/v3/episode?seriesId= (Jellyseerr re-request).
+func (h *Handler) episodeList(w http.ResponseWriter, r *http.Request) {
+	sid, _ := strconv.ParseInt(r.URL.Query().Get("seriesId"), 10, 64)
+	if sid == 0 {
+		h.writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+	eps, _ := h.deps.Store.ListEpisodes(r.Context(), sid)
+	out := make([]map[string]any, 0, len(eps))
+	for _, e := range eps {
+		sn, en := e.SeasonNumber, e.EpisodeNumber
+		if e.SceneSeason > 0 {
+			sn, en = e.SceneSeason, e.SceneEpisode
+		}
+		out = append(out, map[string]any{
+			"id": e.ID, "seriesId": e.SeriesID, "seasonNumber": sn, "episodeNumber": en,
+			"title": e.Title, "monitored": e.Monitored, "hasFile": e.HasFile,
+		})
+	}
+	h.writeJSON(w, http.StatusOK, out)
+}
+
+// monitorEps answers PUT /sonarr/api/v3/episode/monitor (Jellyseerr re-request).
+func (h *Handler) monitorEps(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var body struct {
+		EpisodeIDs []int64 `json:"episodeIds"`
+		Monitored  bool    `json:"monitored"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body"})
+		return
+	}
+	for _, id := range body.EpisodeIDs {
+		if e, err := h.deps.Store.GetEpisode(ctx, id); err == nil {
+			e.Monitored = body.Monitored
+			_ = h.deps.Store.UpdateEpisode(ctx, e)
+		}
+	}
+	h.writeJSON(w, http.StatusOK, []any{})
+}
+
+// deleteSeries answers DELETE /sonarr/api/v3/series/{id} (Jellyseerr request
+// cancellation). Removes the catalog entry; TorBox content is left for the user.
+func (h *Handler) deleteSeries(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	_ = h.deps.Store.DeleteSeries(r.Context(), id)
+	h.writeJSON(w, http.StatusOK, map[string]any{})
 }
 
 func parseTermID(term, prefix string) int {

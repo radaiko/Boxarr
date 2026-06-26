@@ -123,6 +123,59 @@ func (h *Handler) addMovie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// updateMovie answers PUT /radarr/api/v3/movie — Seerr's re-request path for a
+// movie that already exists but is unmonitored. It (re)monitors it and returns the
+// movie with monitored=true (Seerr throws if that field isn't truthy).
+func (h *Handler) updateMovie(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var body struct {
+		ID         int64 `json:"id"`
+		TMDBID     int64 `json:"tmdbId"`
+		AddOptions struct {
+			SearchForMovie bool `json:"searchForMovie"`
+		} `json:"addOptions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body"})
+		return
+	}
+	var m *media.Movie
+	if body.ID != 0 {
+		m, _ = h.deps.Store.GetMovie(ctx, body.ID)
+	}
+	if m == nil && body.TMDBID != 0 {
+		m, _ = h.deps.Store.GetMovieByTMDB(ctx, body.TMDBID)
+	}
+	if m == nil {
+		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "movie not found"})
+		return
+	}
+	if !m.Monitored {
+		m.Monitored = true
+		if err := h.deps.Store.UpdateMovie(ctx, m); err != nil {
+			h.deps.Logger.Error("seerr: update movie", "error", err)
+		}
+	}
+	if body.AddOptions.SearchForMovie {
+		mid := m.ID
+		h.searchOnAdd(ctx, func(c contextT) error { return h.deps.Catalog.SearchWantedForMovie(c, mid) })
+	}
+	h.writeJSON(w, http.StatusOK, h.movieResource(m))
+}
+
+// deleteMovie answers DELETE /radarr/api/v3/movie/{id} (Jellyseerr request
+// cancellation). Removes the catalog entry; the downloaded content on TorBox is
+// left for the user to manage in the TorBox view.
+func (h *Handler) deleteMovie(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	_ = h.deps.Store.DeleteMovie(r.Context(), id)
+	h.writeJSON(w, http.StatusOK, map[string]any{})
+}
+
 // --- shared helpers ---
 
 func yearOf(date string) int {

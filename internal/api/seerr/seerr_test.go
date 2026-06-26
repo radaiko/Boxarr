@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -278,5 +279,74 @@ func TestSonarrSeriesListReportsSeasonStats(t *testing.T) {
 	s1 := seasons[0].(map[string]any)["statistics"].(map[string]any)
 	if s1["episodeFileCount"].(float64) != 1 || s1["episodeCount"].(float64) != 1 {
 		t.Errorf("S01 stats wrong: %v", s1)
+	}
+}
+
+func TestQueueReturnsPaginatedWrapper(t *testing.T) {
+	// Both surfaces must return a {records:[...]} wrapper (not a bare array), or
+	// Seerr's download tracker errors ("Unable to get queue").
+	for _, kind := range []Kind{KindSonarr, KindRadarr} {
+		h, _ := newSurface(t, kind)
+		rec := do(h, http.MethodGet, "/queue", "secret", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%v queue: %d", kind, rec.Code)
+		}
+		var q map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &q); err != nil {
+			t.Fatalf("%v queue must be an object: %s", kind, rec.Body.String())
+		}
+		if _, ok := q["records"]; !ok {
+			t.Errorf("%v queue missing 'records': %s", kind, rec.Body.String())
+		}
+	}
+}
+
+func TestRadarrUpdateMovieMonitors(t *testing.T) {
+	h, st := newSurface(t, KindRadarr)
+	ctx := context.Background()
+	mid, _ := st.CreateMovie(ctx, &media.Movie{TMDBID: 603, Title: "The Matrix", Monitored: false})
+	rec := do(h, http.MethodPut, "/movie", "secret", `{"id":`+strconv.FormatInt(mid, 10)+`,"tmdbId":603}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put movie: %d body=%s", rec.Code, rec.Body.String())
+	}
+	var m map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &m)
+	if m["monitored"] != true {
+		t.Errorf("re-requested movie must be monitored=true: %s", rec.Body.String())
+	}
+	got, _ := st.GetMovie(ctx, mid)
+	if !got.Monitored {
+		t.Error("movie should be monitored in the catalog")
+	}
+}
+
+func TestSonarrPutSeriesMonitorsSeason(t *testing.T) {
+	h, st := newSurface(t, KindSonarr)
+	ctx := context.Background()
+	sid, _ := st.CreateSeries(ctx, &media.Series{TMDBID: 1, TVDBID: 81189, Title: "S", Monitored: true})
+	seasonID, _ := st.UpsertSeason(ctx, &media.Season{SeriesID: sid, SeasonNumber: 2, Monitored: false})
+	rec := do(h, http.MethodPut, "/series", "secret",
+		`{"id":`+strconv.FormatInt(sid, 10)+`,"tvdbId":81189,"seasons":[{"seasonNumber":2,"monitored":true}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put series: %d body=%s", rec.Code, rec.Body.String())
+	}
+	seasons, _ := st.ListSeasons(ctx, sid)
+	for _, s := range seasons {
+		if s.ID == seasonID && !s.Monitored {
+			t.Error("requested season 2 should be monitored after PUT")
+		}
+	}
+}
+
+func TestSonarrDeleteSeries(t *testing.T) {
+	h, st := newSurface(t, KindSonarr)
+	ctx := context.Background()
+	sid, _ := st.CreateSeries(ctx, &media.Series{TMDBID: 1, TVDBID: 81189, Title: "S", Monitored: true})
+	rec := do(h, http.MethodDelete, "/series/"+strconv.FormatInt(sid, 10), "secret", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete series: %d", rec.Code)
+	}
+	if s, _ := st.GetSeries(ctx, sid); s != nil {
+		t.Error("series should be removed from the catalog")
 	}
 }

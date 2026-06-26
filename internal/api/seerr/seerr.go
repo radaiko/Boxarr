@@ -12,9 +12,71 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
+	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 )
+
+// queue answers GET /{kind}/api/v3/queue for Seerr's download tracker: the active
+// downloads as Sonarr/Radarr queue records (paginated wrapper). size/sizeleft are
+// synthesized from ProgressPct so Seerr shows the right percentage.
+func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	jobs, _ := h.deps.Store.JobsByState(ctx,
+		job.StateSubmitting, job.StateQueued, job.StateDownloading, job.StateSeeding)
+	records := make([]map[string]any, 0, len(jobs))
+	for _, j := range jobs {
+		pct := j.ProgressPct
+		if pct < 0 {
+			pct = 0
+		} else if pct > 100 {
+			pct = 100
+		}
+		rec := map[string]any{
+			"id": j.ID, "title": j.NZBName, "protocol": j.Protocol,
+			"status": queueStatus(j.State), "size": 100, "sizeleft": 100 - pct,
+			"trackedDownloadStatus": "ok", "trackedDownloadState": "downloading",
+		}
+		if h.kind == KindSonarr {
+			switch j.MediaType {
+			case "episode":
+				ep, err := h.deps.Store.GetEpisode(ctx, j.MediaRef)
+				if err != nil {
+					continue
+				}
+				sn, en := ep.SeasonNumber, ep.EpisodeNumber
+				if ep.SceneSeason > 0 {
+					sn, en = ep.SceneSeason, ep.SceneEpisode
+				}
+				rec["seriesId"], rec["episodeId"] = ep.SeriesID, ep.ID
+				rec["episode"] = map[string]any{"id": ep.ID, "seasonNumber": sn, "episodeNumber": en}
+			case "season", "series":
+				rec["seriesId"] = j.MediaRef
+			default:
+				continue
+			}
+		} else {
+			if j.MediaType != "movie" {
+				continue
+			}
+			rec["movieId"] = j.MediaRef
+		}
+		records = append(records, rec)
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"page": 1, "pageSize": 20, "sortKey": "timeleft", "sortDirection": "ascending",
+		"totalRecords": len(records), "records": records,
+	})
+}
+
+func queueStatus(s job.State) string {
+	switch s {
+	case job.StateQueued, job.StateSubmitting:
+		return "queued"
+	default:
+		return "downloading"
+	}
+}
 
 // Kind selects which Servarr flavor a router emulates.
 type Kind string
@@ -55,16 +117,23 @@ func NewRouter(kind Kind, deps Deps) http.Handler {
 	r.Get("/tag", h.tags)
 	r.Get("/languageprofile", h.languageProfiles) // Sonarr surface; harmless on Radarr
 	r.Post("/command", h.command)
+	r.Get("/queue", h.queue) // download tracker (active downloads + progress)
 	if kind == KindSonarr {
 		r.Get("/series/lookup", h.seriesLookup)
 		r.Get("/series/{id}", h.seriesByID)
 		r.Get("/series", h.seriesList) // Overseerr sync (real availability/progress)
 		r.Post("/series", h.addSeries)
+		r.Put("/series", h.updateSeries) // re-request: monitor more seasons
+		r.Delete("/series/{id}", h.deleteSeries)
+		r.Get("/episode", h.episodeList)        // Jellyseerr re-request flow
+		r.Put("/episode/monitor", h.monitorEps) // Jellyseerr re-request flow
 	} else {
 		r.Get("/movie/lookup", h.movieLookup)
 		r.Get("/movie/{id}", h.movieByID)
 		r.Get("/movie", h.movieList) // Overseerr sync (real availability)
 		r.Post("/movie", h.addMovie)
+		r.Put("/movie", h.updateMovie) // re-request: (re)monitor an existing movie
+		r.Delete("/movie/{id}", h.deleteMovie)
 	}
 	return r
 }
