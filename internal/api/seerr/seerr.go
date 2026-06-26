@@ -169,22 +169,34 @@ func (h *Handler) qualityProfiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) rootFolders(w http.ResponseWriter, r *http.Request) {
-	kind := "tv"
-	if h.kind == KindRadarr {
-		kind = "movie"
-	}
-	folders, _ := h.deps.Store.ListRootFolders(r.Context(), kind)
-	out := make([]map[string]any, 0, len(folders))
-	for _, f := range folders {
-		out = append(out, rootFolderShape(f.ID, f.Path))
-	}
-	if len(out) == 0 {
-		// Fall back to the configured library root so the dropdown still populates.
-		path := h.deps.Settings.TVLibraryRoot()
-		if h.kind == KindRadarr {
-			path = h.deps.Settings.MovieLibraryRoot()
+	ctx := r.Context()
+	var paths []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if p != "" && !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
 		}
-		out = append(out, rootFolderShape(1, path))
+	}
+	if h.kind == KindRadarr {
+		folders, _ := h.deps.Store.ListRootFolders(ctx, "movie")
+		for _, f := range folders {
+			add(f.Path)
+		}
+		add(h.deps.Settings.MovieLibraryRoot())
+	} else {
+		folders, _ := h.deps.Store.ListRootFolders(ctx, "tv")
+		for _, f := range folders {
+			add(f.Path)
+		}
+		add(h.deps.Settings.TVLibraryRoot())
+		// Expose the anime library root too, so Overseerr/Jellyseerr can configure a
+		// separate anime root folder and route anime requests there.
+		add(h.deps.Settings.AnimeLibraryRoot())
+	}
+	out := make([]map[string]any, 0, len(paths))
+	for i, p := range paths {
+		out = append(out, rootFolderShape(int64(i+1), p))
 	}
 	h.writeJSON(w, http.StatusOK, out)
 }

@@ -55,10 +55,12 @@ func (h *Handler) seriesLookup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) addSeries(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var body struct {
-		TVDBID    int    `json:"tvdbId"`
-		Title     string `json:"title"`
-		Monitored bool   `json:"monitored"`
-		Seasons   []struct {
+		TVDBID         int    `json:"tvdbId"`
+		Title          string `json:"title"`
+		Monitored      bool   `json:"monitored"`
+		SeriesType     string `json:"seriesType"`     // "standard" | "anime" | "daily"
+		RootFolderPath string `json:"rootFolderPath"` // Overseerr's chosen root (anime root → anime)
+		Seasons        []struct {
 			SeasonNumber int  `json:"seasonNumber"`
 			Monitored    bool `json:"monitored"`
 		} `json:"seasons"`
@@ -84,7 +86,16 @@ func (h *Handler) addSeries(w http.ResponseWriter, r *http.Request) {
 			monitoredSeasons = append(monitoredSeasons, s.SeasonNumber)
 		}
 	}
-	sr, err := h.deps.Catalog.AddSeries(ctx, tmdbID, true, monitoredSeasons, "standard")
+	// Add as anime when Overseerr flags the request as anime — either via
+	// seriesType="anime" or by choosing the anime root folder — so it lands in the
+	// anime library and uses anime numbering/selection.
+	seriesType := "standard"
+	animeRoot := h.deps.Settings.AnimeLibraryRoot()
+	if strings.EqualFold(body.SeriesType, "anime") ||
+		(animeRoot != "" && strings.EqualFold(strings.TrimRight(body.RootFolderPath, "/"), strings.TrimRight(animeRoot, "/"))) {
+		seriesType = "anime"
+	}
+	sr, err := h.deps.Catalog.AddSeries(ctx, tmdbID, true, monitoredSeasons, seriesType)
 	if err != nil && !errors.Is(err, catalog.ErrAlreadyExists) {
 		h.deps.Logger.Error("seerr: add series", "error", err)
 		h.writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})

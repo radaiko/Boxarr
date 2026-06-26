@@ -47,7 +47,7 @@ func newSurface(t *testing.T, kind Kind) (http.Handler, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	cfg := &config.Config{SeerrAPIKeys: []string{"secret"}, TVLibraryRoot: t.TempDir(), MovieLibraryRoot: t.TempDir()}
+	cfg := &config.Config{SeerrAPIKeys: []string{"secret"}, TVLibraryRoot: t.TempDir(), MovieLibraryRoot: t.TempDir(), AnimeLibraryRoot: "/data/anime"}
 	set, err := settings.New(context.Background(), st, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -203,5 +203,28 @@ func TestMountedCamelCasePath(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Errorf("mounted %s must resolve, got %d body=%s", p, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+func TestSonarrAnimeRootFolderAndAdd(t *testing.T) {
+	h, st := newSurface(t, KindSonarr)
+	// 1) The anime library root must appear in the Sonarr root-folder list so
+	// Overseerr can configure an anime root folder.
+	rec := do(h, http.MethodGet, "/rootfolder", "secret", "")
+	if !strings.Contains(rec.Body.String(), "/data/anime") {
+		t.Fatalf("anime root folder missing from /rootfolder: %s", rec.Body.String())
+	}
+	// 2) Adding a series with seriesType=anime ingests it as anime (anime library).
+	rec = do(h, http.MethodPost, "/series", "secret",
+		`{"tvdbId":81189,"title":"Breaking Bad","seriesType":"anime","rootFolderPath":"/data/anime","seasons":[{"seasonNumber":1,"monitored":true}]}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add anime: %d body=%s", rec.Code, rec.Body.String())
+	}
+	sr, _ := st.GetSeriesByTMDB(context.Background(), 1396)
+	if sr == nil || sr.SeriesType != "anime" {
+		t.Fatalf("series should be anime, got %+v", sr)
+	}
+	if sr.RootFolderPath != "/data/anime" {
+		t.Errorf("anime series root = %q, want /data/anime", sr.RootFolderPath)
 	}
 }
