@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/settings"
@@ -183,5 +184,24 @@ func TestCommandIsNoOp(t *testing.T) {
 	rec := do(h, http.MethodPost, "/command", "secret", `{"name":"SeriesSearch","seriesId":1}`)
 	if rec.Code != http.StatusCreated {
 		t.Errorf("command should 201, got %d", rec.Code)
+	}
+}
+
+// TestMountedCamelCasePath reproduces the production mount (/radarr/api/v3) and the
+// camelCase endpoint Overseerr actually calls (/qualityProfile). When mounted, chi
+// routes by the RouteContext's RoutePath, so lowercasing only r.URL.Path isn't
+// enough — this guards the "Failed to retrieve profiles: 404" regression.
+func TestMountedCamelCasePath(t *testing.T) {
+	h, _ := newSurface(t, KindRadarr)
+	parent := chi.NewRouter()
+	parent.Mount("/radarr/api/v3", h)
+	for _, p := range []string{"/radarr/api/v3/qualityProfile", "/radarr/api/v3/rootFolder", "/radarr/api/v3/system/status"} {
+		r := httptest.NewRequest(http.MethodGet, p, nil)
+		r.Header.Set("X-Api-Key", "secret")
+		rec := httptest.NewRecorder()
+		parent.ServeHTTP(rec, r)
+		if rec.Code != http.StatusOK {
+			t.Errorf("mounted %s must resolve, got %d body=%s", p, rec.Code, rec.Body.String())
+		}
 	}
 }

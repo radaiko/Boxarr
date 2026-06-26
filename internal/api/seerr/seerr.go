@@ -81,11 +81,17 @@ func (h *Handler) logRequest(next http.Handler) http.Handler {
 	})
 }
 
-// lowercasePath lower-cases the request path so /qualityProfile resolves to the
-// lowercase route we register.
+// lowercasePath lower-cases the request path so Overseerr/Jellyseerr's camelCase
+// endpoints (e.g. /qualityProfile, /rootFolder, /languageProfile) resolve to the
+// lowercase routes we register. This router is MOUNTED, so chi matches sub-routes
+// against the RouteContext's RoutePath — not r.URL.Path — so we must lower-case
+// RoutePath too, or the camelCase paths 404 ("Failed to retrieve profiles").
 func lowercasePath(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = toLowerASCII(r.URL.Path)
+		if rctx := chi.RouteContext(r.Context()); rctx != nil && rctx.RoutePath != "" {
+			rctx.RoutePath = toLowerASCII(rctx.RoutePath)
+		}
 		next.ServeHTTP(w, r)
 	})
 }
