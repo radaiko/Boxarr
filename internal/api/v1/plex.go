@@ -161,6 +161,7 @@ func (h *Handler) plexLibraryCheck(w http.ResponseWriter, r *http.Request) {
 	for _, c := range cats {
 		res := map[string]any{"category": c.name}
 		warnings := []string{}
+		infos := []string{}
 		if c.sectionID == "" {
 			if c.name == "Anime" {
 				res["status"] = "info"
@@ -192,7 +193,13 @@ func (h *Handler) plexLibraryCheck(w http.ResponseWriter, r *http.Request) {
 			for _, l := range sec.Locations {
 				paths = append(paths, l.Path)
 			}
-			warnings = append(warnings, fmt.Sprintf("Library scans %s but Boxarr writes to %q — symlinks may not be detected (or Plex mounts it at a different path).", strings.Join(paths, ", "), c.root))
+			if plexRemapsCleanly(sec.Locations, c.root) {
+				// Different mount paths for the same storage — Boxarr auto-remaps the
+				// post-import scan onto Plex's path, so this is informational, not a fault.
+				infos = append(infos, fmt.Sprintf("Plex scans %s; Boxarr writes %q (same storage, different mount) and auto-remaps post-import scans to Plex's path.", strings.Join(paths, ", "), c.root))
+			} else {
+				warnings = append(warnings, fmt.Sprintf("Library scans %s but Boxarr writes to %q and can't map it unambiguously — Boxarr falls back to a full Plex section scan after each import (still works, just heavier).", strings.Join(paths, ", "), c.root))
+			}
 		}
 		// The key check: expensive per-library analysis on streamed media.
 		if prefs, perr := cl.SectionPrefs(r.Context(), c.sectionID); perr == nil {
@@ -208,15 +215,40 @@ func (h *Handler) plexLibraryCheck(w http.ResponseWriter, r *http.Request) {
 		} else {
 			warnings = append(warnings, "Could not read library settings: "+perr.Error())
 		}
-		if len(warnings) == 0 {
-			res["status"] = "ok"
-		} else {
+		switch {
+		case len(warnings) > 0:
 			res["status"] = "warn"
+		case len(infos) > 0:
+			res["status"] = "info"
+		default:
+			res["status"] = "ok"
 		}
 		res["warnings"] = warnings
+		if len(infos) > 0 {
+			res["infos"] = infos
+		}
 		results = append(results, res)
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+// plexRemapsCleanly reports whether Boxarr's post-import scan can remap root onto
+// one of the section's Plex locations (mirrors the worker's plexScanTarget rules:
+// exact path, matching folder name, or a single location). When true, a path
+// mismatch is handled automatically and is informational rather than a fault.
+func plexRemapsCleanly(locs []plex.Location, root string) bool {
+	root = strings.TrimRight(filepath.Clean(root), "/")
+	if root == "" || len(locs) == 0 {
+		return false
+	}
+	base := filepath.Base(root)
+	for _, l := range locs {
+		p := strings.TrimRight(filepath.Clean(l.Path), "/")
+		if p == root || filepath.Base(p) == base {
+			return true
+		}
+	}
+	return len(locs) == 1
 }
 
 // plexLocationMatches reports whether any Plex scan location lines up with the

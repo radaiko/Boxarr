@@ -5,7 +5,7 @@ import { Icon } from '../ui'
 interface Server { name: string; uri: string; uris: string[] }
 interface Section { key: string; title: string; type: string }
 interface Effective { 'plex.url'?: string; 'plex.movie_section'?: string; 'plex.tv_section'?: string; 'plex.anime_section'?: string }
-interface LibCheck { category: string; section: string; status: string; warnings: string[] }
+interface LibCheck { category: string; section: string; status: string; warnings: string[]; infos?: string[] }
 
 // PlexWizard: official Plex login (PIN OAuth) → pick a server → map libraries to
 // Movies / Series / Anime, saving each choice immediately. Falls back to the
@@ -102,8 +102,11 @@ export function PlexWizard({ effective, configured, onChange }: {
                 <b>{c.category}</b>
                 <span className="muted">{c.section}</span>
               </span>
-              {c.warnings.length > 0 && (
-                <ul className="lib-check-warn">{c.warnings.map((wn, i) => <li key={i}>{wn}</li>)}</ul>
+              {(c.warnings.length > 0 || (c.infos?.length ?? 0) > 0) && (
+                <ul className="lib-check-warn">
+                  {c.warnings.map((wn, i) => <li key={`w${i}`}>{wn}</li>)}
+                  {c.infos?.map((inf, i) => <li key={`i${i}`} className="muted">{inf}</li>)}
+                </ul>
               )}
             </div>
           ))}
