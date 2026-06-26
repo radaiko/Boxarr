@@ -146,10 +146,22 @@ type MovieDetails struct {
 			Title    string `json:"title"`
 		} `json:"titles"`
 	} `json:"alternative_titles"`
+	// Translations carry the LOCALIZED title per language (e.g. the German
+	// theatrical title "Harry Potter und der Gefangene von Askaban"), which is what
+	// foreign-language release groups use — and which is often NOT in
+	// alternative_titles. Essential for cross-language matching.
+	Translations struct {
+		Translations []struct {
+			ISO6391 string `json:"iso_639_1"`
+			Data    struct {
+				Title string `json:"title"`
+			} `json:"data"`
+		} `json:"translations"`
+	} `json:"translations"`
 }
 
-// AltTitles returns the distinct alternative + original titles for cross-language
-// matching (e.g. a German release of an English-catalogued movie).
+// AltTitles returns the distinct alternative + original + translated titles for
+// cross-language matching (e.g. a German release of an English-catalogued movie).
 func (d *MovieDetails) AltTitles() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -163,6 +175,9 @@ func (d *MovieDetails) AltTitles() []string {
 	add(d.OriginalTitle)
 	for _, t := range d.AlternativeTitles.Titles {
 		add(t.Title)
+	}
+	for _, t := range d.Translations.Translations {
+		add(t.Data.Title)
 	}
 	return out
 }
@@ -211,7 +226,7 @@ func (c *Client) TVExternalIDs(ctx context.Context, id int) (*ExternalIDs, error
 // MovieDetails fetches a movie header + release_dates.
 func (c *Client) MovieDetails(ctx context.Context, id int) (*MovieDetails, error) {
 	var out MovieDetails
-	err := c.get(ctx, fmt.Sprintf("/movie/%d?append_to_response=release_dates,alternative_titles", id), &out)
+	err := c.get(ctx, fmt.Sprintf("/movie/%d?append_to_response=release_dates,alternative_titles,translations", id), &out)
 	return &out, err
 }
 

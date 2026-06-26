@@ -97,3 +97,31 @@ func TestIsV3Key(t *testing.T) {
 		t.Error("non-32-char strings are not v3 keys")
 	}
 }
+
+func TestAltTitlesIncludesTranslations(t *testing.T) {
+	var d MovieDetails
+	d.OriginalTitle = "Harry Potter and the Prisoner of Azkaban"
+	d.AlternativeTitles.Titles = []struct {
+		ISO31661 string `json:"iso_3166_1"`
+		Title    string `json:"title"`
+	}{{ISO31661: "US", Title: "HP3"}}
+	d.Translations.Translations = []struct {
+		ISO6391 string `json:"iso_639_1"`
+		Data    struct {
+			Title string `json:"title"`
+		} `json:"data"`
+	}{{ISO6391: "de", Data: struct {
+		Title string `json:"title"`
+	}{Title: "Harry Potter und der Gefangene von Askaban"}}}
+	got := d.AltTitles()
+	want := "Harry Potter und der Gefangene von Askaban"
+	found := false
+	for _, t := range got {
+		if t == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("AltTitles must include the German translation %q; got %v", want, got)
+	}
+}
