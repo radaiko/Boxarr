@@ -253,7 +253,7 @@ func (c *Client) put(ctx context.Context, path string) error {
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("plex PUT %s: status %d", path, resp.StatusCode)
+		return plexStatusErr("PUT", path, resp.StatusCode)
 	}
 	return nil
 }
@@ -275,7 +275,16 @@ func (c *Client) do(ctx context.Context, path string) ([]byte, error) {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("plex GET %s: status %d", path, resp.StatusCode)
+		return nil, plexStatusErr("GET", path, resp.StatusCode)
 	}
 	return body, nil
+}
+
+// plexStatusErr describes a non-2xx Plex response, with an actionable hint for the
+// common 401 — an invalid or expired Plex token.
+func plexStatusErr(method, path string, status int) error {
+	if status == http.StatusUnauthorized {
+		return fmt.Errorf("plex %s %s: unauthorized (401) — Plex token invalid or expired; reconnect Plex in Settings", method, path)
+	}
+	return fmt.Errorf("plex %s %s: status %d", method, path, status)
 }
