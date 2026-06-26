@@ -216,14 +216,14 @@ func (w *Workers) mountBases() []string {
 	return []string{u, tp}
 }
 
-// maybeNotifyUnknown raises an unknown_content notification once per item.
+// maybeNotifyUnknown raises an unknown_content notification ONCE per item. The
+// dedup is tracked on the webdav_item itself (the notified flag), not on the
+// notification table — so clearing notifications doesn't make a persistent unknown
+// re-fire every reconcile. To act on it, use adopt/ignore/delete (which resolve the
+// item); a tracked release whose alt-title is known never reaches here at all.
 func (w *Workers) maybeNotifyUnknown(ctx context.Context, item *webdav.WebDAVItem) {
-	// Dedup: skip if an unread unknown_content notification already names it.
-	existing, _ := w.store.ListNotifications(ctx, false, 500)
-	for _, n := range existing {
-		if n.Type == "unknown_content" && containsName(n.Payload, item.RemotePath) {
-			return
-		}
+	if done, _ := w.store.WasWebDAVItemNotified(ctx, item.RemotePath); done {
+		return
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"name": item.Name, "size": item.Size, "category": item.Category,
@@ -233,16 +233,9 @@ func (w *Workers) maybeNotifyUnknown(ctx context.Context, item *webdav.WebDAVIte
 		Type: "unknown_content", Payload: string(payload),
 	}); err != nil {
 		w.logger.Error("reconcile: enqueuing unknown_content", "error", err)
+		return
 	}
-}
-
-func containsName(payload, remotePath string) bool {
-	var m map[string]any
-	if json.Unmarshal([]byte(payload), &m) != nil {
-		return false
-	}
-	rp, _ := m["remotePath"].(string)
-	return rp == remotePath
+	_ = w.store.MarkWebDAVItemNotified(ctx, item.RemotePath)
 }
 
 func categoryOf(mediaType string) string {

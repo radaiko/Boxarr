@@ -105,6 +105,30 @@ func (s *Store) GetWebDAVItemByPath(ctx context.Context, remotePath string) (*we
 	return scanWebDAVItem(row)
 }
 
+// WasWebDAVItemNotified reports whether an unknown_content notification has already
+// been raised for this item — so we surface it once and don't re-fire after the
+// user clears notifications. The flag survives reconcile upserts (which don't touch
+// the notified column).
+func (s *Store) WasWebDAVItemNotified(ctx context.Context, remotePath string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT notified FROM webdav_item WHERE remote_path = ?`, remotePath).Scan(&n)
+	if err != nil {
+		return false, err //nolint:wrapcheck // caller treats any error as "not notified"
+	}
+	return n != 0, nil
+}
+
+// MarkWebDAVItemNotified records that we've raised an unknown_content notification
+// for this item.
+func (s *Store) MarkWebDAVItemNotified(ctx context.Context, remotePath string) error {
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE webdav_item SET notified=1 WHERE remote_path = ?`, remotePath); err != nil {
+		return fmt.Errorf("marking webdav item notified: %w", err)
+	}
+	return nil
+}
+
 // SetWebDAVItemKnown flags a mount item known (adopt/ignore: stop re-flagging it).
 func (s *Store) SetWebDAVItemKnown(ctx context.Context, remotePath string, known bool) error {
 	_, err := s.db.ExecContext(ctx,

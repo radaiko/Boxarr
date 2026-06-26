@@ -74,3 +74,24 @@ func TestWebDAVFreshItemsNotMarkedBroken(t *testing.T) {
 		t.Error("a just-seen item must not be flagged broken")
 	}
 }
+
+func TestWebDAVItemNotifiedSurvivesUpsert(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	_ = st.UpsertWebDAVItem(ctx, &webdav.WebDAVItem{Name: "X", RemotePath: "/mnt/x", Category: "unknown"})
+	if done, _ := st.WasWebDAVItemNotified(ctx, "/mnt/x"); done {
+		t.Fatal("fresh item should not be notified")
+	}
+	if err := st.MarkWebDAVItemNotified(ctx, "/mnt/x"); err != nil {
+		t.Fatal(err)
+	}
+	if done, _ := st.WasWebDAVItemNotified(ctx, "/mnt/x"); !done {
+		t.Fatal("should be notified after mark")
+	}
+	// A later reconcile sweep re-upserts the same item — the notified flag must
+	// persist so the notification isn't raised again.
+	_ = st.UpsertWebDAVItem(ctx, &webdav.WebDAVItem{Name: "X", RemotePath: "/mnt/x", Category: "unknown"})
+	if done, _ := st.WasWebDAVItemNotified(ctx, "/mnt/x"); !done {
+		t.Error("notified flag must survive re-upsert")
+	}
+}
