@@ -43,6 +43,12 @@ type livePlex struct{ set *settings.Store }
 func (l livePlex) ScanPath(ctx context.Context, sectionID, path string) error {
 	return l.set.Plex().ScanPath(ctx, sectionID, path)
 }
+func (l livePlex) ScanSection(ctx context.Context, sectionID string) error {
+	return l.set.Plex().ScanSection(ctx, sectionID)
+}
+func (l livePlex) SectionLocations(ctx context.Context, sectionID string) ([]string, error) {
+	return l.set.Plex().SectionLocations(ctx, sectionID)
+}
 func (l livePlex) SectionItems(ctx context.Context, sectionID string, typ int) ([]plex.LibItem, error) {
 	return l.set.Plex().SectionItems(ctx, sectionID, typ)
 }

@@ -114,6 +114,28 @@ func (c *Client) ScanSection(ctx context.Context, sectionID string) error {
 	return err
 }
 
+// SectionLocations returns the filesystem paths a section scans, as Plex sees them
+// (e.g. "/mnt/smedia/tv"). Used to remap Boxarr's library path to Plex's mount so a
+// partial scan targets a path Plex actually recognizes.
+func (c *Client) SectionLocations(ctx context.Context, sectionID string) ([]string, error) {
+	secs, err := c.Sections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range secs {
+		if s.Key == sectionID {
+			paths := make([]string, 0, len(s.Locations))
+			for _, l := range s.Locations {
+				if l.Path != "" {
+					paths = append(paths, l.Path)
+				}
+			}
+			return paths, nil
+		}
+	}
+	return nil, nil
+}
+
 // metaItem is the subset of a Plex metadata record Boxarr reads.
 type metaItem struct {
 	RatingKey   string `json:"ratingKey"`

@@ -100,17 +100,23 @@ func (w *Workers) supersedeOldDownload(ctx context.Context, newJobID, oldJobID i
 	w.DeleteDownloads(ctx, []int64{oldJobID}, func(int, int, string) {})
 }
 
-// maybePlexScan triggers a best-effort Plex partial scan of dir if Plex is wired
-// and the relevant section id is configured.
+// maybePlexScan triggers a best-effort Plex scan of the just-imported dir if Plex
+// is wired and the section id is configured. Boxarr and Plex often mount the same
+// storage at different paths (e.g. Boxarr "/mnt/library/tv", Plex "/mnt/smedia/tv"),
+// and Plex's partial-scan endpoint silently no-ops on a path it doesn't recognize.
+// So the Boxarr path is remapped onto Plex's reported library location for an
+// efficient partial scan; when it can't be mapped unambiguously, a full section
+// scan is used instead (Plex finds the new file via its own mount).
 func (w *Workers) maybePlexScan(ctx context.Context, dir, kind string) {
 	if w.plex == nil || !w.set.PlexEnabled() {
 		return
 	}
-	section := w.set.PlexMovieSection()
+	section, root := w.set.PlexMovieSection(), w.set.MovieLibraryRoot()
 	switch kind {
 	case "tv":
-		section = w.set.PlexTVSection()
+		section, root = w.set.PlexTVSection(), w.set.TVLibraryRoot()
 	case "anime":
+		root = w.set.AnimeLibraryRoot()
 		if section = w.set.PlexAnimeSection(); section == "" {
 			section = w.set.PlexTVSection() // fall back to the TV section
 		}
@@ -118,9 +124,63 @@ func (w *Workers) maybePlexScan(ctx context.Context, dir, kind string) {
 	if section == "" {
 		return
 	}
-	if err := w.plex.ScanPath(ctx, section, dir); err != nil {
-		w.logger.Warn("plex scan failed", "dir", dir, "error", err)
+	if target, ok := plexScanTarget(dir, root, w.plexLocations(ctx, section)); ok {
+		if err := w.plex.ScanPath(ctx, section, target); err != nil {
+			w.logger.Warn("plex scan failed", "dir", target, "error", err)
+			return
+		}
+		w.logger.Info("plex partial scan triggered", "section", section, "path", target)
+		return
 	}
+	// Path couldn't be mapped to Plex's mount — a full section scan still surfaces
+	// the new file (Plex scans its own configured location).
+	if err := w.plex.ScanSection(ctx, section); err != nil {
+		w.logger.Warn("plex section scan failed", "section", section, "error", err)
+		return
+	}
+	w.logger.Info("plex section scan triggered (path not mappable to Plex mount)", "section", section, "dir", dir)
+}
+
+// plexLocations returns a section's Plex-side library paths, memoized (they're
+// effectively static for a server). Failures aren't cached, so a transient Plex
+// error is retried on the next import.
+func (w *Workers) plexLocations(ctx context.Context, section string) []string {
+	if v, ok := w.plexLocCache.Load(section); ok {
+		return v.([]string)
+	}
+	locs, err := w.plex.SectionLocations(ctx, section)
+	if err != nil {
+		return nil
+	}
+	w.plexLocCache.Store(section, locs)
+	return locs
+}
+
+// plexScanTarget remaps a Boxarr library dir onto the path Plex sees, using the
+// section's Plex-side locations. Returns (path, true) when the dir falls under the
+// Boxarr root and maps unambiguously (exact match, matching basename, or a single
+// Plex location); otherwise ("", false) so the caller does a full section scan.
+func plexScanTarget(dir, boxarrRoot string, plexLocs []string) (string, bool) {
+	boxarrRoot = strings.TrimRight(boxarrRoot, "/")
+	if boxarrRoot == "" || !strings.HasPrefix(dir, boxarrRoot) || len(plexLocs) == 0 {
+		return "", false
+	}
+	rel := dir[len(boxarrRoot):] // leading "/" retained
+	for _, l := range plexLocs { // already the path Plex uses → no remap
+		if strings.TrimRight(l, "/") == boxarrRoot {
+			return dir, true
+		}
+	}
+	base := filepath.Base(boxarrRoot)
+	for _, l := range plexLocs { // same library folder name under a different mount
+		if filepath.Base(strings.TrimRight(l, "/")) == base {
+			return strings.TrimRight(l, "/") + rel, true
+		}
+	}
+	if len(plexLocs) == 1 { // unambiguous single location
+		return strings.TrimRight(plexLocs[0], "/") + rel, true
+	}
+	return "", false
 }
 
 // largestVideo returns the largest video file under dir (recursively).

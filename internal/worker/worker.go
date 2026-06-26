@@ -30,6 +30,8 @@ type TorBoxAPI interface {
 // PlexScanner triggers a Plex library scan after import. *plex.Client satisfies it.
 type PlexScanner interface {
 	ScanPath(ctx context.Context, sectionID, path string) error
+	ScanSection(ctx context.Context, sectionID string) error
+	SectionLocations(ctx context.Context, sectionID string) ([]string, error)
 	SectionItems(ctx context.Context, sectionID string, typ int) ([]plex.LibItem, error)
 	ShowEpisodes(ctx context.Context, showRatingKey string) ([]plex.LibItem, error)
 	ItemStreams(ctx context.Context, ratingKey string) (partID int, audio, subs []plex.Stream, err error)
@@ -71,6 +73,10 @@ type Workers struct {
 
 	// plex, when set, receives a partial-scan call after each import (optional).
 	plex PlexScanner
+	// plexLocCache memoizes each section's Plex-side library paths (sectionID →
+	// []path) so the post-import scan can remap Boxarr's path onto Plex's mount
+	// without re-querying Plex every time.
+	plexLocCache sync.Map
 
 	// automation, when set, enables the Phase-5 scheduled loops (optional).
 	automation Automation
