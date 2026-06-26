@@ -2,7 +2,9 @@ package worker
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -52,8 +54,32 @@ func (w *Workers) maybeRefreshWebDAV(ctx context.Context) {
 		w.logger.Warn("webdav refresh rate-limited; backing off",
 			"backoff", webdavRefreshBackoff.String())
 	case resp.StatusCode >= 400:
-		w.logger.Warn("webdav refresh returned error status", "status", resp.StatusCode)
+		snippet := ""
+		if b, _ := io.ReadAll(io.LimitReader(resp.Body, 256)); len(b) > 0 {
+			snippet = strings.TrimSpace(string(b))
+		}
+		w.logger.Warn("webdav refresh returned error status",
+			"status", resp.StatusCode,
+			"reason", webdavErrHint(resp.StatusCode),
+			"credsConfigured", w.set.TorBoxWebDAVUser() != "" && w.set.TorBoxWebDAVPass() != "",
+			"url", w.set.TorBoxWebDAVRefreshURL(),
+			"body", snippet)
 	default:
 		w.logger.Info("forced torbox webdav refresh", "status", resp.StatusCode)
+	}
+}
+
+// webdavErrHint maps a WebDAV refresh failure status to a likely cause the user
+// can act on (the credentials are TorBox WebDAV user/pass, set in Settings).
+func webdavErrHint(status int) string {
+	switch status {
+	case http.StatusUnauthorized: // 401
+		return "TorBox WebDAV username/password rejected — invalid, empty, or expired. Check Settings → TorBox WebDAV credentials (the WebDAV password is your TorBox API key)."
+	case http.StatusForbidden: // 403
+		return "access forbidden — the WebDAV login is valid but not allowed to refresh; check your TorBox plan/permissions."
+	case http.StatusNotFound: // 404
+		return "refresh endpoint not found — check the TorBox WebDAV URL in Settings."
+	default:
+		return "unexpected status from the TorBox WebDAV endpoint."
 	}
 }
