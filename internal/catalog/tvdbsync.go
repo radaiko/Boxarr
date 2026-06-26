@@ -63,10 +63,18 @@ func (s *Service) refreshSeriesFromTVDB(ctx context.Context, sr *media.Series) (
 	if err != nil {
 		return 0, err
 	}
+	sceneMap := resolveSceneMap(tvEps, local)
 	n := 0
-	for id, te := range resolveSceneMap(tvEps, local) {
-		if err := s.store.SetEpisodeSceneNumbers(ctx, id, te.season, te.episode, te.absolute); err == nil {
-			n++
+	for _, ep := range local {
+		if te, ok := sceneMap[ep.ID]; ok {
+			if err := s.store.SetEpisodeSceneNumbers(ctx, ep.ID, te.season, te.episode, te.absolute); err == nil {
+				n++
+			}
+		} else if ep.SceneSeason > 0 {
+			// A previously-mapped episode that no longer resolves: clear the stale
+			// scene numbers so it reverts to its TMDB season/episode (self-heals the
+			// "S2 episode duplicated as a phantom S1 episode" collision).
+			_ = s.store.SetEpisodeSceneNumbers(ctx, ep.ID, 0, 0, 0)
 		}
 	}
 	return n, nil
@@ -118,7 +126,11 @@ func resolveSceneMap(tvEps []tvdb.Episode, local []*media.Episode) map[int64]tvd
 		if !ok {
 			te, ok = byNum[[2]int{ep.SeasonNumber, ep.EpisodeNumber}]
 		}
-		if !ok {
+		// Absolute-number fallback ONLY for flat numbering (everything in season 1),
+		// where the episode number IS the absolute. For a real season >1 the local
+		// episode number is per-season (S2E5 ≠ absolute 5), so byAbs[5] would wrongly
+		// collapse it onto the season-1 episode with absolute 5.
+		if !ok && ep.SeasonNumber <= 1 {
 			te, ok = byAbs[ep.EpisodeNumber]
 		}
 		if !ok || te.season == 0 {
