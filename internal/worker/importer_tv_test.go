@@ -8,6 +8,7 @@ import (
 
 	"github.com/radaiko/boxarr/internal/job"
 	"github.com/radaiko/boxarr/internal/media"
+	"github.com/radaiko/boxarr/internal/release"
 	"github.com/radaiko/boxarr/internal/torbox"
 )
 
@@ -132,5 +133,35 @@ func TestTVImportSingleEpisode(t *testing.T) {
 	e1, _ := st.GetEpisode(ctx, epIDs[0])
 	if e1.HasFile {
 		t.Error("S01E01 must not be imported by an S01E02 grab")
+	}
+}
+
+func TestMatchEpisodesScene(t *testing.T) {
+	// Solo Leveling: flat TMDB S01E22, mapped to TVDB scene S02E10.
+	eps := []*media.Episode{
+		{ID: 1, SeasonNumber: 1, EpisodeNumber: 21, SceneSeason: 2, SceneEpisode: 9},
+		{ID: 2, SeasonNumber: 1, EpisodeNumber: 22, SceneSeason: 2, SceneEpisode: 10},
+		{ID: 3, SeasonNumber: 1, EpisodeNumber: 23, SceneSeason: 2, SceneEpisode: 11},
+	}
+	p, err := release.ParseRelease("Solo.Leveling.S02E10.We.Need.A.Hero.2160p.WEB-DL.MULTI.AAC2.0.x265.Multi.Subs.AniMeitantei")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := matchEpisodes(p, eps)
+	if len(m) != 1 || m[0].ID != 2 {
+		t.Fatalf("S02E10 should match the episode with scene S02E10 (id 2), got %+v", m)
+	}
+}
+
+func TestMatchEpisodesStandardBeatsScene(t *testing.T) {
+	// A normal series: real S/E must win even if some episode has scene numbers.
+	eps := []*media.Episode{
+		{ID: 1, SeasonNumber: 1, EpisodeNumber: 5},
+		{ID: 2, SeasonNumber: 1, EpisodeNumber: 22, SceneSeason: 1, SceneEpisode: 5},
+	}
+	p, _ := release.ParseRelease("Show.S01E05.1080p.WEB-DL")
+	m := matchEpisodes(p, eps)
+	if len(m) != 1 || m[0].ID != 1 {
+		t.Fatalf("real S01E05 should win, got %+v", m)
 	}
 }

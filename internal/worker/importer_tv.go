@@ -142,9 +142,10 @@ func (w *Workers) tvLinkPath(root, seriesFolder, seriesTitle string, eps []*medi
 }
 
 // matchEpisodes maps a parsed file to catalog episodes. It tries, in order:
-// standard S/E numbering (incl. multi-episode ranges), anime absolute numbering,
-// then daily/date-based air-date matching — so anime and daily shows aren't
-// silently dropped (a season-pack file with none of these carries no episode).
+// standard S/E numbering, TVDB scene/broadcast S/E (anime whose local numbering is
+// flat TMDB), anime absolute numbering, then daily/date-based air-date matching —
+// so anime and daily shows aren't silently dropped (a season-pack file with none
+// of these carries no episode).
 func matchEpisodes(p *release.ParsedRelease, episodes []*media.Episode) []*media.Episode {
 	// 1. Standard SxxEyy (and adjacent multi-episode ranges).
 	if p.EpisodeStart > 0 {
@@ -156,6 +157,26 @@ func matchEpisodes(p *release.ParsedRelease, episodes []*media.Episode) []*media
 		for n := p.EpisodeStart; n <= end; n++ {
 			for _, ep := range episodes {
 				if ep.SeasonNumber == p.SeasonNumber && ep.EpisodeNumber == n {
+					out = append(out, ep)
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	// 1b. TVDB scene/broadcast SxxEyy: anime keeps flat TMDB numbering locally
+	// (S01E01-25) but releases use TVDB seasons (S02E10). Match the file's S/E
+	// against each episode's stored scene numbering (0 = unset → never matches).
+	if p.EpisodeStart > 0 {
+		end := p.EpisodeEnd
+		if end < p.EpisodeStart {
+			end = p.EpisodeStart
+		}
+		var out []*media.Episode
+		for n := p.EpisodeStart; n <= end; n++ {
+			for _, ep := range episodes {
+				if ep.SceneSeason > 0 && ep.SceneSeason == p.SeasonNumber && ep.SceneEpisode == n {
 					out = append(out, ep)
 				}
 			}
