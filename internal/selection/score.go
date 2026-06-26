@@ -62,6 +62,12 @@ type Config struct {
 	// "likely contains the language" bonus as a MULTi release.
 	LikelyLanguageGroups map[string]bool
 	WeightSubs           int
+
+	// FailedGroups (lower-cased release groups) are groups whose releases have
+	// failed to download repeatedly (from the grab blocklist). A candidate from
+	// such a group is penalized — the inverse of a PreferredGroup — so reliable
+	// sources are preferred over failure-prone ones.
+	FailedGroups map[string]bool
 }
 
 // Release is the scoring view of a candidate (Prowlarr fields + parsed quality).
@@ -222,6 +228,16 @@ func (cfg Config) Score(r Release) int {
 	}
 	if contains(cfg.PreferredGroups, r.Group) {
 		s += cfg.WeightPreferredGroup
+	}
+	// Penalize failure-prone groups (from the grab blocklist) — the inverse of a
+	// preferred group. The group is parsed from the title (r.Group may be unset in
+	// the search-scoring path), mirroring the language-group lookup below.
+	if len(cfg.FailedGroups) > 0 {
+		if p, err := release.ParseRelease(r.Title); err == nil && p != nil && p.Group != "" {
+			if cfg.FailedGroups[strings.ToLower(p.Group)] {
+				s -= cfg.WeightPreferredGroup
+			}
+		}
 	}
 	if containsKeyword(cfg.PreferredKeywords, r.Title) {
 		s += cfg.WeightPreferredKeyword

@@ -3,7 +3,32 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
+
+	"github.com/radaiko/boxarr/internal/release"
 )
+
+// GroupFailedGrabCounts returns, per release group (lower-cased), how many of its
+// releases are blocklisted (failed to download). Used both for the Database UI
+// "most failed grabs" view and to penalize failure-prone groups in scoring.
+func (s *Store) GroupFailedGrabCounts(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT release_name FROM grab_blocklist`)
+	if err != nil {
+		return nil, fmt.Errorf("counting failed grabs by group: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]int{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		if p, perr := release.ParseRelease(name); perr == nil && p != nil && p.Group != "" {
+			out[strings.ToLower(p.Group)]++
+		}
+	}
+	return out, rows.Err()
+}
 
 // BlocklistGrab records a release that failed to download so selection won't grab
 // it again (an auto-retry then picks a different release). Keyed by release name;

@@ -538,3 +538,19 @@ tr.clickable:hover { background: #ffffff05; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation-duration: .01ms !important; }
 }
+
+/* Database — Groups tab collapsible sections */
+.db-expanders { display: flex; flex-direction: column; gap: 10px; }
+.db-expander { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.db-expander > summary {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 10px 14px; list-style: none; user-select: none; font-size: 14px;
+}
+.db-expander > summary::-webkit-details-marker { display: none; }
+.db-expander > summary::before {
+  content: '▸'; color: var(--text-dim); font-size: 11px; transition: transform .15s ease;
+}
+.db-expander[open] > summary::before { transform: rotate(90deg); }
+.db-expander-title { font-weight: 600; }
+.db-expander-hint { color: var(--text-dim); font-size: 11px; margin-left: auto; opacity: .8; }
+.db-expander-body { padding: 4px 14px 12px; border-top: 1px solid var(--border); }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { getJSON, del } from '../api'
 import { Icon, Loading, ErrorBanner, Empty } from '../ui'
 import { toast } from '../toast'
@@ -25,11 +25,19 @@ interface BlocklistEntry {
   createdAt: string
 }
 
+interface FailedGroup {
+  group: string
+  failed: number
+  penalized: boolean // ≥ threshold failed downloads → penalized in scoring
+}
+
 interface LangResponse {
   items: RL[]
   favoriteLangs?: string[]
   groupStats?: Record<string, GroupStat[]>
   blocklist?: BlocklistEntry[]
+  failedGroups?: FailedGroup[]
+  failedGroupThreshold?: number
 }
 
 // Languages is the verified release→language knowledge base: the real audio +
@@ -41,6 +49,8 @@ export function Database() {
   const [favs, setFavs] = useState<string[]>([])
   const [groupStats, setGroupStats] = useState<Record<string, GroupStat[]>>({})
   const [blocklist, setBlocklist] = useState<BlocklistEntry[]>([])
+  const [failedGroups, setFailedGroups] = useState<FailedGroup[]>([])
+  const [failedThreshold, setFailedThreshold] = useState(3)
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [tab, setTab] = useState<'releases' | 'groups' | 'failed'>('releases')
@@ -52,6 +62,8 @@ export function Database() {
         setFavs(r.favoriteLangs ?? [])
         setGroupStats(r.groupStats ?? {})
         setBlocklist(r.blocklist ?? [])
+        setFailedGroups(r.failedGroups ?? [])
+        if (r.failedGroupThreshold) setFailedThreshold(r.failedGroupThreshold)
       })
       .catch((e: unknown) => setErr(String(e)))
   }
@@ -143,13 +155,39 @@ export function Database() {
       )}
 
       {tab === 'groups' && (
-        favStats.length > 0 ? (
-          <div className="group-reliability">
-            {favStats.map((lang) => <GroupReliability key={lang} lang={lang} stats={groupStats[lang]} />)}
-          </div>
+        favStats.length === 0 && failedGroups.length === 0 ? (
+          <Empty icon="languages" title="No group data yet"
+            hint="As Plex verifies downloads, Boxarr learns which release groups reliably ship your preferred languages (and boosts them) — and which fail to download (and penalizes them)." />
         ) : (
-          <Empty icon="languages" title="No group reliability yet"
-            hint="As Plex verifies downloads, Boxarr learns which release groups reliably ship your preferred languages and boosts them in search." />
+          <div className="db-expanders">
+            {failedGroups.length > 0 && (
+              <Expander title="Most failed grabs" count={failedGroups.length} tone="broken"
+                hint={`Groups whose downloads fail; ${failedThreshold}+ failures are penalized in scoring (the inverse of a trusted group).`}>
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr><th>Group</th><th style={{ width: 120 }}>Failed</th><th style={{ width: 160 }}>Scoring</th></tr></thead>
+                    <tbody>
+                      {failedGroups.map((g) => (
+                        <tr key={g.group}>
+                          <td className="rel-title">{g.group}</td>
+                          <td className="muted">{g.failed}</td>
+                          <td>{g.penalized
+                            ? <span className="status broken">penalized</span>
+                            : <span className="muted" style={{ fontSize: 12 }}>—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Expander>
+            )}
+            {favStats.map((lang) => (
+              <Expander key={lang} title={`${lang.toUpperCase()} reliability`} count={groupStats[lang].length} tone="available"
+                hint={`Release groups that ship ${lang.toUpperCase()}; ≥90% over ≥3 releases are trusted and boosted in scoring.`}>
+                <GroupReliability lang={lang} stats={groupStats[lang]} />
+              </Expander>
+            ))}
+          </div>
         )
       )}
 
@@ -182,6 +220,23 @@ export function Database() {
         </>
       )}
     </section>
+  )
+}
+
+// Expander is a collapsible section (native disclosure) for the Groups tab, so the
+// language-group tables and the failed-grabs table can each be opened on demand.
+function Expander({ title, count, tone, hint, children }: {
+  title: string; count: number; tone: string; hint?: string; children: ReactNode
+}) {
+  return (
+    <details className="db-expander">
+      <summary>
+        <span className="db-expander-title">{title}</span>
+        <span className={`status ${tone}`}>{count}</span>
+        {hint && <span className="db-expander-hint">{hint}</span>}
+      </summary>
+      <div className="db-expander-body">{children}</div>
+    </details>
   )
 }
 

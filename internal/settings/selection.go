@@ -151,6 +151,21 @@ func (s *Store) SelectionConfigFor(kind string) selection.Config {
 	if len(groups) > 0 {
 		cfg.LikelyLanguageGroups = groups
 	}
+
+	// Learned failure tendencies: groups whose releases repeatedly fail to download
+	// (≥ FailedGroupMinCount blocklisted) are penalized in scoring — the inverse of
+	// the reliability bonus above — so a failure-prone group loses to a steadier one.
+	if counts, err := s.db.GroupFailedGrabCounts(context.Background()); err == nil {
+		failed := map[string]bool{}
+		for g, n := range counts {
+			if n >= FailedGroupMinCount {
+				failed[g] = true
+			}
+		}
+		if len(failed) > 0 {
+			cfg.FailedGroups = failed
+		}
+	}
 	return cfg
 }
 
@@ -176,6 +191,10 @@ func wantedLanguages(cfg selection.Config) []string {
 const (
 	LikelyGroupMinRatio  = 0.90 // ≥90% of the group's verified releases carry the language
 	LikelyGroupMinSample = 3    // ...over at least this many verified releases
+	// FailedGroupMinCount is how many blocklisted (failed-download) releases a group
+	// needs before it's penalized in scoring. Matches the Database "most failed
+	// grabs" penalized badge.
+	FailedGroupMinCount = 3
 )
 
 func upperAll(langs []string) []string {

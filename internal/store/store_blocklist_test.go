@@ -39,3 +39,18 @@ func TestBlocklistListAndRemove(t *testing.T) {
 		t.Errorf("remove should drop only A, got %v", set)
 	}
 }
+
+func TestGroupFailedGrabCounts(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	_ = st.BlocklistGrab(ctx, "Movie.2024.1080p.BluRay-BADGRP", "x")
+	_ = st.BlocklistGrab(ctx, "Other.2024.720p.WEB-BADGRP", "x")
+	_ = st.BlocklistGrab(ctx, "Third.2024.1080p.BluRay-GOODGRP", "x")
+	counts, err := st.GroupFailedGrabCounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts["badgrp"] != 2 || counts["goodgrp"] != 1 {
+		t.Errorf("group failed counts = %v, want badgrp:2 goodgrp:1", counts)
+	}
+}

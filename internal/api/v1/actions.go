@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -151,10 +152,27 @@ func (h *Handler) releaseLanguages(w http.ResponseWriter, r *http.Request) {
 	}
 	// Failed-to-download releases (the grab blocklist) — shown in the same DB view.
 	blocklist, _ := h.deps.Store.ListBlocklistedGrabs(ctx, 500)
+	// Groups ranked by failed downloads; those at/over the threshold are penalized
+	// in scoring (the inverse of the reliability bonus).
+	failedCounts, _ := h.deps.Store.GroupFailedGrabCounts(ctx)
+	failedGroups := make([]failedGroupDTO, 0, len(failedCounts))
+	for g, n := range failedCounts {
+		failedGroups = append(failedGroups, failedGroupDTO{
+			Group: g, Failed: n, Penalized: n >= settings.FailedGroupMinCount,
+		})
+	}
+	sort.Slice(failedGroups, func(i, j int) bool { return failedGroups[i].Failed > failedGroups[j].Failed })
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"items": rows, "total": len(rows), "favoriteLangs": favs, "groupStats": groupStats,
-		"blocklist": blocklist,
+		"blocklist": blocklist, "failedGroups": failedGroups,
+		"failedGroupThreshold": settings.FailedGroupMinCount,
 	})
+}
+
+type failedGroupDTO struct {
+	Group     string `json:"group"`
+	Failed    int    `json:"failed"`
+	Penalized bool   `json:"penalized"`
 }
 
 // removeBlocklistedGrab un-blocklists a release (DELETE /releases/blocklist?name=)
