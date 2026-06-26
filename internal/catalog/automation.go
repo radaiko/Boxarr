@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/radaiko/boxarr/internal/media"
@@ -12,6 +13,11 @@ import (
 func (s *Service) AutoSearchWanted(ctx context.Context) error {
 	if s.search == nil {
 		return nil
+	}
+	// Auto-retry: return failed items to the wanted pool so they're re-searched.
+	// The grab blocklist ensures a different release is grabbed, not the broken one.
+	if n, err := s.store.ResetFailedForRetry(ctx); err == nil && n > 0 {
+		slog.Default().Info("auto-retry: reset failed items to wanted for re-search", "count", n)
 	}
 	movies, err := s.store.WantedMovies(ctx)
 	if err != nil {

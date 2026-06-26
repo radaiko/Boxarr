@@ -615,6 +615,28 @@ func (s *Store) DeleteMovie(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ResetFailedForRetry returns every `failed` movie + episode to `wanted` for an
+// auto-retry (clearing the failed job link + last-searched so they're searched
+// immediately). Run at the start of each auto-search; idempotent (a no-op once
+// nothing is failed). With broken releases blocklisted, the retry grabs a
+// different release instead of re-grabbing the one that failed. Returns the total
+// number of items reset.
+func (s *Store) ResetFailedForRetry(ctx context.Context) (int64, error) {
+	var total int64
+	for _, q := range []string{
+		`UPDATE movie SET status='wanted', job_id=NULL, last_searched_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE status='failed'`,
+		`UPDATE episode SET status='wanted', job_id=NULL, last_searched_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE status='failed'`,
+	} {
+		res, err := s.db.ExecContext(ctx, q)
+		if err != nil {
+			return total, fmt.Errorf("resetting failed items for retry: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		total += n
+	}
+	return total, nil
+}
+
 // ResetMovieForRetry returns a failed movie to the wanted pool for an auto-retry:
 // clears the failed job link + the last-searched timestamp so the next auto-search
 // cycle re-searches it immediately (and, with the broken release blocklisted, grabs
