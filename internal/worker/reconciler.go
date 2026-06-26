@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/radaiko/boxarr/internal/job"
+	"github.com/radaiko/boxarr/internal/media"
 	"github.com/radaiko/boxarr/internal/notify"
 	"github.com/radaiko/boxarr/internal/release"
 	"github.com/radaiko/boxarr/internal/webdav"
@@ -17,11 +18,86 @@ import (
 // Reconcile runs one reconcile sweep on demand (POST /api/v1/webdav/refresh).
 func (w *Workers) Reconcile(ctx context.Context) error { return w.reconcileOnce(ctx) }
 
+// relinkEpisodesToScene moves anime episode symlinks named with flat TMDB numbering
+// (e.g. Season 01/…S01E13) to their scene-based path (Season 02/…S02E01), matching
+// how Plex's broadcast-season anime library indexes them — otherwise Plex can't
+// match the file and never verifies its language. Idempotent: it acts only when the
+// current symlink path differs from the expected scene path, so it's a cheap no-op
+// once everything is named correctly (and for non-anime series with no scene data).
+func (w *Workers) relinkEpisodesToScene(ctx context.Context) {
+	series, err := w.store.ListSeries(ctx)
+	if err != nil {
+		return
+	}
+	syms, _ := w.store.ListImportedSymlinks(ctx)
+	byPath := make(map[string]*job.ImportedSymlink, len(syms))
+	for _, s := range syms {
+		byPath[s.SymlinkPath] = s
+	}
+	for _, sr := range series {
+		if sr.RootFolderPath == "" {
+			continue
+		}
+		seriesFolder := movieFolderName(sr.Title, sr.Year)
+		eps, _ := w.store.ListEpisodes(ctx, sr.ID)
+		moved := false
+		for _, ep := range eps {
+			if !ep.HasFile || ep.LibraryPath == "" || ep.SceneSeason == 0 {
+				continue // no file, or no scene numbering → nothing to correct
+			}
+			want := w.tvLinkPath(sr.RootFolderPath, seriesFolder, sr.Title,
+				[]*media.Episode{ep}, filepath.Ext(ep.LibraryPath))
+			if want == ep.LibraryPath {
+				continue // already scene-named
+			}
+			target, terr := os.Readlink(ep.LibraryPath)
+			if terr != nil {
+				if s := byPath[ep.LibraryPath]; s != nil {
+					target = s.TargetPath
+				}
+			}
+			if target == "" {
+				continue // unresolvable — don't strand the DB on a path with no file
+			}
+			if err := os.MkdirAll(filepath.Dir(want), 0o755); err != nil {
+				w.logger.Warn("relink: creating dir", "path", want, "error", err)
+				continue
+			}
+			if err := atomicReplaceSymlink(want, target); err != nil {
+				w.logger.Warn("relink: linking", "path", want, "error", err)
+				continue
+			}
+			old := ep.LibraryPath
+			_ = removeLibrarySymlink(old)
+			ep.LibraryPath = want
+			if err := w.store.UpdateEpisode(ctx, ep); err != nil {
+				w.logger.Warn("relink: updating episode", "id", ep.ID, "error", err)
+				continue
+			}
+			if s := byPath[old]; s != nil {
+				_ = w.store.DeleteImportedSymlink(ctx, s.ID)
+				_ = w.store.UpsertImportedSymlink(ctx, &job.ImportedSymlink{
+					JobID: s.JobID, SymlinkPath: want, TargetPath: s.TargetPath,
+				})
+			}
+			w.logger.Info("relinked episode to scene numbering", "from", old, "to", want, "episode_id", ep.ID)
+			moved = true
+		}
+		if moved {
+			w.maybePlexScan(ctx, sr.RootFolderPath, plexKind(sr.SeriesType))
+		}
+	}
+}
+
 // reconcileOnce sweeps the WebDAV mount against known jobs: it upserts a
 // webdav_item per release folder, categorizes it, marks vanished items broken,
 // and raises an unknown_content notification for items Boxarr did not submit
 // (FR-NC-1/2, FR-WD-1/2/3).
 func (w *Workers) reconcileOnce(ctx context.Context) error {
+	// Heal anime library files that were named with flat TMDB numbering before scene
+	// naming existed, so Plex can match (and language-verify) them. Idempotent.
+	w.relinkEpisodesToScene(ctx)
+
 	// Capture the sweep marker from the DB clock (not Go's local clock) so the
 	// stale check below compares like-for-like against last_seen.
 	sweepStart, err := w.store.DBNow(ctx)

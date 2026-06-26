@@ -122,17 +122,30 @@ func (w *Workers) importEpisodes(ctx context.Context, j *job.Job, sourceDir stri
 	return nil
 }
 
+// episodeSceneSE returns the season/episode to use for the library path: the TVDB
+// scene numbering when set (anime, where local numbering is flat TMDB), else the
+// real TMDB numbering. Plex's anime libraries index by the scene/broadcast season,
+// so naming files by scene is what lets Plex match (and verify) them.
+func episodeSceneSE(ep *media.Episode) (int, int) {
+	if ep.SceneSeason > 0 {
+		return ep.SceneSeason, ep.SceneEpisode
+	}
+	return ep.SeasonNumber, ep.EpisodeNumber
+}
+
 // tvLinkPath builds the Plex-standard episode path:
 // <root>/<Series (Year)>/Season NN/<Series> - S01E02[-E03] - <Title>.ext
 // eps is the (ordered) set of catalog episodes the file covers; a multi-episode
-// file gets an SxxEyy-Ezz range tag so Plex recognizes every episode.
+// file gets an SxxEyy-Ezz range tag so Plex recognizes every episode. Uses scene
+// numbering when present so anime files match Plex's broadcast-season layout.
 func (w *Workers) tvLinkPath(root, seriesFolder, seriesTitle string, eps []*media.Episode, ext string) string {
-	first := eps[0]
-	last := eps[len(eps)-1]
-	seasonDir := fmt.Sprintf("Season %02d", first.SeasonNumber)
-	tag := fmt.Sprintf("S%02dE%02d", first.SeasonNumber, first.EpisodeNumber)
-	if last.SeasonNumber == first.SeasonNumber && last.EpisodeNumber > first.EpisodeNumber {
-		tag += fmt.Sprintf("-E%02d", last.EpisodeNumber)
+	first, last := eps[0], eps[len(eps)-1]
+	fs, fe := episodeSceneSE(first)
+	ls, le := episodeSceneSE(last)
+	seasonDir := fmt.Sprintf("Season %02d", fs)
+	tag := fmt.Sprintf("S%02dE%02d", fs, fe)
+	if ls == fs && le > fe {
+		tag += fmt.Sprintf("-E%02d", le)
 	}
 	name := fmt.Sprintf("%s - %s", sanitizePathComponent(seriesTitle), tag)
 	if first.Title != "" {

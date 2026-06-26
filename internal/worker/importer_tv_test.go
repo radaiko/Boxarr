@@ -165,3 +165,20 @@ func TestMatchEpisodesStandardBeatsScene(t *testing.T) {
 		t.Fatalf("real S01E05 should win, got %+v", m)
 	}
 }
+
+func TestTVLinkPathUsesScene(t *testing.T) {
+	w := &Workers{}
+	// Flat TMDB E13 mapped to scene S02E01 -> file should live under Season 02 / S02E01.
+	ep := &media.Episode{SeasonNumber: 1, EpisodeNumber: 13, SceneSeason: 2, SceneEpisode: 1, Title: "You Aren't E-Rank"}
+	got := w.tvLinkPath("/lib/anime", "Solo Leveling (2024)", "Solo Leveling", []*media.Episode{ep}, ".mkv")
+	want := "/lib/anime/Solo Leveling (2024)/Season 02/Solo Leveling - S02E01 - You Aren't E-Rank.mkv"
+	if got != want {
+		t.Errorf("scene path:\n got %q\nwant %q", got, want)
+	}
+	// Standard series (no scene) keeps real numbering.
+	ep2 := &media.Episode{SeasonNumber: 1, EpisodeNumber: 5, Title: "Pilot"}
+	got2 := w.tvLinkPath("/lib/tv", "Show (2020)", "Show", []*media.Episode{ep2}, ".mkv")
+	if got2 != "/lib/tv/Show (2020)/Season 01/Show - S01E05 - Pilot.mkv" {
+		t.Errorf("real path wrong: %q", got2)
+	}
+}

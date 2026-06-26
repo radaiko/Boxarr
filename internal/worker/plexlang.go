@@ -137,10 +137,19 @@ func (w *Workers) plexLanguageOnce(ctx context.Context) error {
 			if !ep.HasFile {
 				continue
 			}
-			if it, ok := bySE[[2]int{ep.SeasonNumber, ep.EpisodeNumber}]; ok {
+			// Plex indexes anime by the scene/broadcast season, so look up by scene
+			// numbering first (matching how we name the library files), then fall back
+			// to the flat TMDB numbering for libraries that index that way.
+			season, episode := episodeSceneSE(ep)
+			it, ok := bySE[[2]int{season, episode}]
+			if !ok && ep.SceneSeason > 0 {
+				season, episode = ep.SeasonNumber, ep.EpisodeNumber
+				it, ok = bySE[[2]int{season, episode}]
+			}
+			if ok {
 				eid := ep.ID
 				w.applyPlexLanguage(ctx, kind, it.RatingKey, sr.ID,
-					fmt.Sprintf("%s S%02dE%02d", sr.Title, ep.SeasonNumber, ep.EpisodeNumber),
+					fmt.Sprintf("%s S%02dE%02d", sr.Title, season, episode),
 					w.releaseNameForJob(ctx, ep.JobID),
 					func(miss bool) { _ = w.store.SetEpisodeLangMissing(ctx, eid, miss) })
 			}
