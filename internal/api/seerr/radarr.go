@@ -4,12 +4,64 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
+	"github.com/radaiko/boxarr/internal/media"
 )
+
+// movieList answers GET /radarr/api/v3/movie (Overseerr's Radarr sync). It returns
+// every catalog movie, or just the one matching ?tmdbId= (the existence check).
+func (h *Handler) movieList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	movies, _ := h.deps.Store.ListMovies(ctx)
+	tmdbFilter := r.URL.Query().Get("tmdbId")
+	out := make([]map[string]any, 0, len(movies))
+	for _, m := range movies {
+		if tmdbFilter != "" && strconv.FormatInt(m.TMDBID, 10) != tmdbFilter {
+			continue
+		}
+		out = append(out, h.movieResource(m))
+	}
+	h.writeJSON(w, http.StatusOK, out)
+}
+
+// movieByID answers GET /radarr/api/v3/movie/{id}.
+func (h *Handler) movieByID(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	m, err := h.deps.Store.GetMovie(r.Context(), id)
+	if err != nil {
+		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	h.writeJSON(w, http.StatusOK, h.movieResource(m))
+}
+
+// movieResource maps a catalog movie to a Radarr v3 MovieResource (the subset
+// Overseerr reads: tmdbId to match, hasFile/isAvailable for availability).
+func (h *Handler) movieResource(m *media.Movie) map[string]any {
+	res := map[string]any{
+		"id": m.ID, "title": m.Title, "tmdbId": m.TMDBID, "imdbId": m.IMDBID,
+		"year": m.Year, "monitored": m.Monitored, "hasFile": m.HasFile, "isAvailable": m.HasFile,
+		"status": m.TMDBStatus, "qualityProfileId": m.QualityProfileID,
+		"rootFolderPath": m.RootFolderPath, "folderName": m.LibraryPath,
+		"titleSlug":           slug(m.Title) + "-" + strconv.FormatInt(m.TMDBID, 10),
+		"minimumAvailability": m.MinimumAvailability, "added": rfc3339(m.AddedAt), "sizeOnDisk": 0,
+		"images": []map[string]any{{"coverType": "poster", "url": h.deps.Settings.TMDB().ImageURL("w500", m.PosterPath)}},
+	}
+	if m.HasFile {
+		res["movieFile"] = map[string]any{"id": m.ID, "relativePath": filepath.Base(m.LibraryPath), "size": 0}
+	}
+	return res
+}
 
 // movieLookup answers GET /radarr/api/v3/movie/lookup?term=tmdb:{id}.
 func (h *Handler) movieLookup(w http.ResponseWriter, r *http.Request) {

@@ -4,11 +4,111 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
+	"github.com/radaiko/boxarr/internal/media"
 )
+
+// seriesList answers GET /sonarr/api/v3/series (Overseerr's Sonarr sync). Returns
+// every catalog series, or just the one matching ?tvdbId= (the existence check).
+func (h *Handler) seriesList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	series, _ := h.deps.Store.ListSeries(ctx)
+	tvdbFilter := r.URL.Query().Get("tvdbId")
+	out := make([]map[string]any, 0, len(series))
+	for _, s := range series {
+		if tvdbFilter != "" && strconv.FormatInt(s.TVDBID, 10) != tvdbFilter {
+			continue
+		}
+		eps, _ := h.deps.Store.ListEpisodes(ctx, s.ID)
+		out = append(out, h.seriesResource(s, eps))
+	}
+	h.writeJSON(w, http.StatusOK, out)
+}
+
+// seriesByID answers GET /sonarr/api/v3/series/{id}.
+func (h *Handler) seriesByID(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	ctx := r.Context()
+	s, err := h.deps.Store.GetSeries(ctx, id)
+	if err != nil {
+		h.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	eps, _ := h.deps.Store.ListEpisodes(ctx, s.ID)
+	h.writeJSON(w, http.StatusOK, h.seriesResource(s, eps))
+}
+
+// seriesResource maps a catalog series to a Sonarr v3 SeriesResource. Seasons are
+// grouped by the TVDB scene season (when set) so per-season availability matches
+// Overseerr's TVDB view; statistics.episodeFileCount drives "available".
+func (h *Handler) seriesResource(s *media.Series, eps []*media.Episode) map[string]any {
+	type agg struct{ total, withFile int }
+	bySeason := map[int]*agg{}
+	for _, e := range eps {
+		sn := e.SeasonNumber
+		if e.SceneSeason > 0 {
+			sn = e.SceneSeason
+		}
+		a := bySeason[sn]
+		if a == nil {
+			a = &agg{}
+			bySeason[sn] = a
+		}
+		a.total++
+		if e.HasFile {
+			a.withFile++
+		}
+	}
+	nums := make([]int, 0, len(bySeason))
+	for n := range bySeason {
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	seasons := make([]map[string]any, 0, len(nums))
+	totalEps, totalFiles := 0, 0
+	for _, n := range nums {
+		a := bySeason[n]
+		totalEps += a.total
+		totalFiles += a.withFile
+		seasons = append(seasons, map[string]any{
+			"seasonNumber": n, "monitored": s.Monitored,
+			"statistics": map[string]any{
+				"episodeCount": a.total, "episodeFileCount": a.withFile,
+				"totalEpisodeCount": a.total, "percentOfEpisodes": pct(a.withFile, a.total),
+			},
+		})
+	}
+	return map[string]any{
+		"id": s.ID, "title": s.Title, "tvdbId": s.TVDBID, "tmdbId": s.TMDBID,
+		"monitored": s.Monitored, "seriesType": s.SeriesType, "year": s.Year,
+		"status": s.TMDBStatus, "ended": strings.EqualFold(s.TMDBStatus, "ended"),
+		"qualityProfileId": s.QualityProfileID, "rootFolderPath": s.RootFolderPath, "seasonFolder": true,
+		"titleSlug": slug(s.Title) + "-" + strconv.FormatInt(s.TVDBID, 10),
+		"added":     rfc3339(s.AddedAt), "seasons": seasons,
+		"statistics": map[string]any{
+			"seasonCount": len(seasons), "episodeCount": totalEps,
+			"episodeFileCount": totalFiles, "totalEpisodeCount": totalEps,
+			"percentOfEpisodes": pct(totalFiles, totalEps),
+		},
+		"images": []map[string]any{{"coverType": "poster", "url": h.deps.Settings.TMDB().ImageURL("w500", s.PosterPath)}},
+	}
+}
+
+func pct(part, total int) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return float64(part) / float64(total) * 100
+}
 
 // seriesLookup answers GET /sonarr/api/v3/series/lookup?term=tvdb:{id}. It
 // returns one canonical object built from TMDB; the `id` field is present only

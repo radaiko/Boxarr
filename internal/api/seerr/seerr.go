@@ -57,9 +57,13 @@ func NewRouter(kind Kind, deps Deps) http.Handler {
 	r.Post("/command", h.command)
 	if kind == KindSonarr {
 		r.Get("/series/lookup", h.seriesLookup)
+		r.Get("/series/{id}", h.seriesByID)
+		r.Get("/series", h.seriesList) // Overseerr sync (real availability/progress)
 		r.Post("/series", h.addSeries)
 	} else {
 		r.Get("/movie/lookup", h.movieLookup)
+		r.Get("/movie/{id}", h.movieByID)
+		r.Get("/movie", h.movieList) // Overseerr sync (real availability)
 		r.Post("/movie", h.addMovie)
 	}
 	return r

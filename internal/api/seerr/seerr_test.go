@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
+	"github.com/radaiko/boxarr/internal/media"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 )
@@ -226,5 +227,56 @@ func TestSonarrAnimeRootFolderAndAdd(t *testing.T) {
 	}
 	if sr.RootFolderPath != "/data/anime" {
 		t.Errorf("anime series root = %q, want /data/anime", sr.RootFolderPath)
+	}
+}
+
+func TestRadarrMovieListReportsAvailability(t *testing.T) {
+	h, st := newSurface(t, KindRadarr)
+	ctx := context.Background()
+	m, _ := st.CreateMovie(ctx, &media.Movie{TMDBID: 603, Title: "The Matrix", Monitored: true, HasFile: true})
+	_ = m
+	// GET /movie returns the catalog with hasFile/isAvailable.
+	rec := do(h, http.MethodGet, "/movie", "secret", "")
+	var list []map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 1 || list[0]["tmdbId"].(float64) != 603 || list[0]["hasFile"] != true || list[0]["isAvailable"] != true {
+		t.Fatalf("movie list wrong: %s", rec.Body.String())
+	}
+	// ?tmdbId= filter.
+	rec = do(h, http.MethodGet, "/movie?tmdbId=999", "secret", "")
+	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 0 {
+		t.Errorf("tmdbId filter should exclude non-matches: %s", rec.Body.String())
+	}
+}
+
+func TestSonarrSeriesListReportsSeasonStats(t *testing.T) {
+	h, st := newSurface(t, KindSonarr)
+	ctx := context.Background()
+	sid, _ := st.CreateSeries(ctx, &media.Series{TMDBID: 1, TVDBID: 81189, Title: "Solo", Monitored: true, SeriesType: "anime"})
+	seasonID, _ := st.UpsertSeason(ctx, &media.Season{SeriesID: sid, SeasonNumber: 1})
+	// Flat E1 (scene S01E01, has file) + flat E13 (scene S02E01, no file).
+	e1, _ := st.UpsertEpisode(ctx, &media.Episode{SeriesID: sid, SeasonID: seasonID, SeasonNumber: 1, EpisodeNumber: 1})
+	e13, _ := st.UpsertEpisode(ctx, &media.Episode{SeriesID: sid, SeasonID: seasonID, SeasonNumber: 1, EpisodeNumber: 13})
+	_ = st.SetEpisodeSceneNumbers(ctx, e1, 1, 1, 1)
+	_ = st.SetEpisodeSceneNumbers(ctx, e13, 2, 1, 13)
+	se1, _ := st.GetEpisode(ctx, e1)
+	se1.HasFile = true
+	_ = st.UpdateEpisode(ctx, se1)
+
+	rec := do(h, http.MethodGet, "/series?tvdbId=81189", "secret", "")
+	var list []map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 1 {
+		t.Fatalf("series list: %s", rec.Body.String())
+	}
+	seasons := list[0]["seasons"].([]any)
+	// Two scene seasons: S01 (1 ep, 1 file) + S02 (1 ep, 0 files).
+	if len(seasons) != 2 {
+		t.Fatalf("expected 2 scene seasons, got %d: %s", len(seasons), rec.Body.String())
+	}
+	s1 := seasons[0].(map[string]any)["statistics"].(map[string]any)
+	if s1["episodeFileCount"].(float64) != 1 || s1["episodeCount"].(float64) != 1 {
+		t.Errorf("S01 stats wrong: %v", s1)
 	}
 }
