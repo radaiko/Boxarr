@@ -23,6 +23,45 @@ func (s *Store) BlocklistGrab(ctx context.Context, releaseName, reason string) e
 	return nil
 }
 
+// BlocklistEntry is one blocklisted (failed-to-download) release, for display.
+type BlocklistEntry struct {
+	ReleaseName string `json:"releaseName"`
+	Reason      string `json:"reason"`
+	CreatedAt   string `json:"createdAt"`
+}
+
+// ListBlocklistedGrabs returns blocklisted releases newest-first (for the UI).
+func (s *Store) ListBlocklistedGrabs(ctx context.Context, limit int) ([]BlocklistEntry, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT release_name, reason, CAST(created_at AS TEXT)
+		 FROM grab_blocklist ORDER BY created_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("listing grab blocklist: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []BlocklistEntry
+	for rows.Next() {
+		var e BlocklistEntry
+		if err := rows.Scan(&e.ReleaseName, &e.Reason, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// RemoveBlocklistedGrab un-blocklists a release so selection may grab it again.
+func (s *Store) RemoveBlocklistedGrab(ctx context.Context, releaseName string) error {
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM grab_blocklist WHERE release_name=?`, releaseName); err != nil {
+		return fmt.Errorf("removing grab blocklist entry: %w", err)
+	}
+	return nil
+}
+
 // BlocklistedGrabs returns the set of release names that failed to download, so
 // selection can skip them.
 func (s *Store) BlocklistedGrabs(ctx context.Context) (map[string]bool, error) {

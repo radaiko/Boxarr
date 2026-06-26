@@ -21,3 +21,21 @@ func TestGrabBlocklist(t *testing.T) {
 		t.Errorf("blocklist = %v, want the one release", set)
 	}
 }
+
+func TestBlocklistListAndRemove(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	_ = st.BlocklistGrab(ctx, "A.S01E01-GRP", "incomplete")
+	_ = st.BlocklistGrab(ctx, "B.2024-GRP", "stalled")
+	list, err := st.ListBlocklistedGrabs(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].CreatedAt == "" {
+		t.Fatalf("expected 2 entries with timestamps, got %+v", list)
+	}
+	_ = st.RemoveBlocklistedGrab(ctx, "A.S01E01-GRP")
+	if set, _ := st.BlocklistedGrabs(ctx); set["A.S01E01-GRP"] || !set["B.2024-GRP"] {
+		t.Errorf("remove should drop only A, got %v", set)
+	}
+}

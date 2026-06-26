@@ -105,6 +105,7 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/library/refresh", h.triggerLibraryRefresh)
 	r.Post("/tvdb/refresh", h.triggerTVDBRefresh)
 	r.Get("/releases/languages", h.releaseLanguages)
+	r.Delete("/releases/blocklist", h.removeBlocklistedGrab)
 	r.Get("/logs", h.logs)
 	r.Get("/movies", h.listMovies)
 	r.Get("/movies/lookup", h.lookupMovies)

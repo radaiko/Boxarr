@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -148,9 +149,34 @@ func (h *Handler) releaseLanguages(w http.ResponseWriter, r *http.Request) {
 		}
 		groupStats[lang] = list
 	}
+	// Failed-to-download releases (the grab blocklist) — shown in the same DB view.
+	blocklist, _ := h.deps.Store.ListBlocklistedGrabs(ctx, 500)
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"items": rows, "total": len(rows), "favoriteLangs": favs, "groupStats": groupStats,
+		"blocklist": blocklist,
 	})
+}
+
+// removeBlocklistedGrab un-blocklists a release (DELETE /releases/blocklist?name=)
+// so selection may grab it again. Accepts the name via query param or JSON body.
+func (h *Handler) removeBlocklistedGrab(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		var body struct {
+			ReleaseName string `json:"releaseName"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		name = body.ReleaseName
+	}
+	if name == "" {
+		h.writeError(w, http.StatusBadRequest, "bad_request", "release name is required")
+		return
+	}
+	if err := h.deps.Store.RemoveBlocklistedGrab(r.Context(), name); err != nil {
+		h.serverError(w, "removing blocklist entry", err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // favoriteLanguages is the de-duplicated union of required + preferred languages

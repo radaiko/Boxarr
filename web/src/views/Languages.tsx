@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getJSON } from '../api'
+import { getJSON, del } from '../api'
 import { Icon, Loading, ErrorBanner, Empty } from '../ui'
+import { toast } from '../toast'
 
 interface RL {
   releaseName: string
@@ -18,10 +19,17 @@ interface GroupStat {
   trusted: boolean // ≥90% of the group's releases ship the language (gets a scoring boost)
 }
 
+interface BlocklistEntry {
+  releaseName: string
+  reason: string
+  createdAt: string
+}
+
 interface LangResponse {
   items: RL[]
   favoriteLangs?: string[]
   groupStats?: Record<string, GroupStat[]>
+  blocklist?: BlocklistEntry[]
 }
 
 // Languages is the verified release→language knowledge base: the real audio +
@@ -32,18 +40,31 @@ export function Languages() {
   const [items, setItems] = useState<RL[] | null>(null)
   const [favs, setFavs] = useState<string[]>([])
   const [groupStats, setGroupStats] = useState<Record<string, GroupStat[]>>({})
+  const [blocklist, setBlocklist] = useState<BlocklistEntry[]>([])
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
 
-  useEffect(() => {
+  function load() {
     getJSON<LangResponse>('/releases/languages')
       .then((r) => {
         setItems(r.items ?? [])
         setFavs(r.favoriteLangs ?? [])
         setGroupStats(r.groupStats ?? {})
+        setBlocklist(r.blocklist ?? [])
       })
       .catch((e: unknown) => setErr(String(e)))
-  }, [])
+  }
+  useEffect(load, [])
+
+  async function unblock(rel: string) {
+    try {
+      await del('/releases/blocklist?name=' + encodeURIComponent(rel))
+      toast('Removed from the failed-release blocklist — it can be grabbed again.', 'ok')
+      setBlocklist((b) => b.filter((e) => e.releaseName !== rel))
+    } catch (e) {
+      toast(`Couldn't remove: ${String(e)}`, 'err')
+    }
+  }
 
   // Groups → set of languages they've been verified to ship (audio or subs).
   const groupLangs = useMemo(() => {
@@ -108,6 +129,33 @@ export function Languages() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {blocklist.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <div className="muted" style={{ marginBottom: 6, fontSize: 13 }}>
+            Failed releases <span className="status broken" style={{ marginLeft: 6 }}>{blocklist.length}</span>
+            <span style={{ fontSize: 11, opacity: 0.7, marginLeft: 6 }}>
+              — blocklisted after a failed download; skipped on re-search. Remove to allow grabbing again.
+            </span>
+          </div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Release</th><th style={{ width: 240 }}>Reason</th><th style={{ width: 150 }}>When</th><th className="grab-col" /></tr></thead>
+              <tbody>
+                {blocklist.map((b) => (
+                  <tr key={b.releaseName}>
+                    <td className="rel-title">{b.releaseName}</td>
+                    <td className="muted" style={{ fontSize: 12 }}>{b.reason || '—'}</td>
+                    <td className="muted" style={{ fontSize: 12 }}>{b.createdAt}</td>
+                    <td><button className="btn btn-sm" title="Remove from blocklist (allow grabbing again)"
+                      onClick={() => void unblock(b.releaseName)}><Icon name="trash" /> Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>
