@@ -89,6 +89,46 @@ func firstPreferred(ss []Stream, preferred []string) int {
 	return 0
 }
 
+// LanguageAvailable reports whether any of langs is present in the item's audio
+// or subtitle tracks. An empty langs list is treated as "nothing required" → true.
+func LanguageAvailable(langs []string, audio, subs []Stream) bool {
+	if len(langs) == 0 {
+		return true
+	}
+	return firstPreferred(audio, langs) != 0 || firstPreferred(subs, langs) != 0
+}
+
+// unionLangs returns preferred followed by any required languages not already in
+// preferred (case-insensitive), preserving preference order for track selection.
+func unionLangs(preferred, required []string) []string {
+	out := make([]string, 0, len(preferred)+len(required))
+	seen := map[string]bool{}
+	for _, l := range append(append([]string{}, preferred...), required...) {
+		k := strings.ToLower(l)
+		if l == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, l)
+	}
+	return out
+}
+
+// PickStreamsFor chooses the default audio + subtitle streams using the
+// required-vs-preferred split. Track selection ranks by preference order
+// (preferred first, then required), but an item is only "missing" when none of
+// the REQUIRED languages is present — a required language satisfied means the
+// item is watchable even if the preferred backup language is absent. When no
+// required languages are configured, the preferred set gates "missing".
+func PickStreamsFor(required, preferred []string, requireAny bool, audio, subs []Stream) (audioID, subID int, missing bool) {
+	audioID, subID, _ = PickStreams(unionLangs(preferred, required), requireAny, audio, subs)
+	gate := required
+	if len(gate) == 0 {
+		gate = preferred
+	}
+	return audioID, subID, !LanguageAvailable(gate, audio, subs)
+}
+
 // PickStreams chooses the default audio + subtitle stream ids for an item from
 // the configured preferred languages, returning missing=true when the wanted
 // language can't be met. subID 0 means "no subtitle"; audioID 0 means "leave the

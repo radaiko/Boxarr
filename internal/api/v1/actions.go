@@ -105,6 +105,11 @@ func (h *Handler) triggerLibraryRefresh(w http.ResponseWriter, r *http.Request) 
 			if err := h.deps.Reconciler.Reconcile(ctx); err != nil {
 				return err
 			}
+			// Tell Plex to rescan its libraries so on-disk changes surface even when
+			// no import happened this cycle to trigger a per-folder scan.
+			if err := h.deps.Reconciler.ScanPlexLibraries(ctx); err != nil {
+				return err
+			}
 		}
 		if h.deps.PlexLang != nil {
 			return h.deps.PlexLang.PlexLanguageSweep(ctx)

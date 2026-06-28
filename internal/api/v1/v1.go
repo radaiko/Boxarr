@@ -25,9 +25,11 @@ type HealReporter interface {
 	HealRunInfo() (last, next time.Time)
 }
 
-// Reconciler triggers an out-of-band WebDAV/mylist reconcile (satisfied by worker.Workers).
+// Reconciler triggers an out-of-band WebDAV/mylist reconcile and a Plex library
+// scan (satisfied by worker.Workers).
 type Reconciler interface {
 	Reconcile(ctx context.Context) error
+	ScanPlexLibraries(ctx context.Context) error
 }
 
 // Adopter imports an already-present unknown WebDAV folder into the library

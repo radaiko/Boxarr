@@ -167,13 +167,18 @@ func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey string,
 		return // can't read streams — leave the flag as-is
 	}
 	cfg := w.set.SelectionConfigFor(kind)
-	preferred := cfg.PreferredLanguages
-	if len(preferred) == 0 {
-		preferred = cfg.RequiredLanguages
-	}
-	wantA, wantS, missing := plex.PickStreams(preferred, cfg.RequireAnyLanguage, audio, subs)
+	// "missing" is gated on the REQUIRED languages: an item whose required
+	// language (e.g. DE) is present is watchable even when the preferred backup
+	// (e.g. EN) is absent, so it must not be flagged language-missing. Default
+	// track selection still ranks preferred first. When nothing is required, the
+	// preferred set defines "missing".
+	wantA, wantS, missing := plex.PickStreamsFor(cfg.RequiredLanguages, cfg.PreferredLanguages, cfg.RequireAnyLanguage, audio, subs)
 	if setMissing != nil {
 		setMissing(missing) // drives the in-list marker + re-search
+	}
+	wanted := cfg.RequiredLanguages
+	if len(wanted) == 0 {
+		wanted = cfg.PreferredLanguages
 	}
 	// Record the verified languages into the knowledge base (release → real
 	// audio/subtitle languages), keyed by the release name, for group-tendency
@@ -188,7 +193,7 @@ func (w *Workers) applyPlexLanguage(ctx context.Context, kind, ratingKey string,
 	}
 	if missing {
 		detail := fmt.Sprintf("wanted %s — available audio: %s; subtitles: %s",
-			strings.Join(preferred, " / "), streamLangs(audio), streamLangs(subs))
+			strings.Join(wanted, " / "), streamLangs(audio), streamLangs(subs))
 		w.notifyLanguageMissing(ctx, kind, navID, label, detail)
 	}
 	curA, curS := plex.CurrentSelection(audio, subs)

@@ -1189,3 +1189,50 @@ func TestHealerFiresFailedEvent(t *testing.T) {
 		t.Errorf("expected detected+failed events, got %v", seen)
 	}
 }
+
+func TestSubmitterDrainsDespiteLearnedDailyCap(t *testing.T) {
+	fake := &fakeTorBox{}
+	w, st, _ := testWorkers(t, fake)
+	ctx := context.Background()
+	// Simulate the old buggy state: a "daily cap" of 1 was learned from a
+	// short-window 429, and one job was already submitted today.
+	_ = w.set.Set(ctx, settings.KeyTorBoxDailyCap, "1")
+	did, _ := st.CreateJob(ctx, &job.Job{State: job.StateImported, Category: "sonarr", NZBName: "Done"})
+	dj, _ := st.GetJob(ctx, did)
+	now := time.Now()
+	dj.SubmittedAt = &now
+	_ = st.UpdateJob(ctx, dj)
+
+	// A fresh pending job must still be submitted — a short-window rate limit
+	// must not freeze submission for the rest of the UTC day.
+	id, _ := st.CreateJob(ctx, &job.Job{
+		State: job.StatePending, Category: "sonarr", NZBName: "Rel", NZBContent: []byte("<nzb/>"),
+	})
+	if err := w.submitOnce(ctx); err != nil {
+		t.Fatalf("submitOnce: %v", err)
+	}
+	got, _ := st.GetJob(ctx, id)
+	if got.State != job.StateQueued {
+		t.Errorf("pending job must submit despite a learned daily cap; got %s", got.State)
+	}
+}
+
+func TestRateLimitDoesNotPersistDailyCap(t *testing.T) {
+	fake := &fakeTorBox{}
+	w, st, _ := testWorkers(t, fake)
+	ctx := context.Background()
+	// One job already submitted today, then a 429 on the next — the old code
+	// would "learn" and persist a daily cap from the burst count. It must not.
+	did, _ := st.CreateJob(ctx, &job.Job{State: job.StateImported, Category: "sonarr", NZBName: "Done"})
+	dj, _ := st.GetJob(ctx, did)
+	now := time.Now()
+	dj.SubmittedAt = &now
+	_ = st.UpdateJob(ctx, dj)
+	fake.createErr = &torbox.APIError{Status: 429, Detail: "60 per 1 hour"}
+	st.CreateJob(ctx, &job.Job{State: job.StatePending, Category: "sonarr", NZBName: "Rel", NZBContent: []byte("x")})
+
+	_ = w.submitOnce(ctx)
+	if cap := w.set.TorBoxDailyCap(); cap != 0 {
+		t.Errorf("a short-window 429 must not persist a daily cap; got %d", cap)
+	}
+}

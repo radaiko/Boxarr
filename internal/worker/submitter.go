@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -12,25 +11,17 @@ import (
 	"github.com/radaiko/boxarr/internal/torbox"
 )
 
-// startOfDayUTC is midnight UTC today — the window for the learned daily-grab cap.
-func startOfDayUTC() time.Time {
-	t := time.Now().UTC()
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-}
-
 // persistRateLimit remembers a TorBox throttle: it stores the cooldown (so it
-// survives restarts), records the event, and lowers the learned daily-grab cap to
-// the number of grabs that triggered the limit.
+// survives restarts) and records the event. TorBox's NZB-creation limit is a
+// short rolling window (a 429 carries a minutes-long Retry-After), so the cooldown
+// alone paces submission — we deliberately do NOT learn a daily cap from it, which
+// previously froze the whole queue for a UTC day and ratcheted permanently down.
 func (w *Workers) persistRateLimit(ctx context.Context, cooldown time.Duration) {
 	until := time.Now().Add(cooldown)
 	_ = w.set.Set(ctx, settings.KeyTorBoxCooldownUntil, until.UTC().Format(time.RFC3339))
-	today, _ := w.store.CountJobsSubmittedSince(ctx, startOfDayUTC())
-	detail := fmt.Sprintf("rate-limited after %d grabs today; cooldown %s", today, cooldown.Round(time.Second))
-	if cur := w.set.TorBoxDailyCap(); today > 0 && (cur == 0 || int(today) < cur) {
-		_ = w.set.Set(ctx, settings.KeyTorBoxDailyCap, strconv.Itoa(int(today)))
-		detail += fmt.Sprintf("; learned daily cap = %d", today)
-	}
-	_ = w.store.RecordLimitEvent(ctx, "rate_limit", detail)
+	hour, _ := w.store.CountJobsSubmittedSince(ctx, time.Now().Add(-time.Hour))
+	_ = w.store.RecordLimitEvent(ctx, "rate_limit",
+		fmt.Sprintf("rate-limited after %d grabs in the last hour; cooldown %s", hour, cooldown.Round(time.Second)))
 }
 
 // redundantPendingReason returns a non-empty reason when a pending job should be
@@ -71,15 +62,10 @@ func (w *Workers) submitOnce(ctx context.Context) error {
 	if now := time.Now(); now.Before(w.submitBackoffUntil) {
 		return nil // still cooling down from a TorBox rate-limit
 	}
-	// Respect a persisted cooldown (survives restarts) and the learned daily cap.
+	// Respect a persisted cooldown (survives restarts). Submission is paced solely
+	// by TorBox's own 429 cooldowns — no day-long freeze.
 	if cu := w.set.TorBoxCooldownUntil(); !cu.IsZero() && time.Now().Before(cu) {
 		return nil
-	}
-	if cap := w.set.TorBoxDailyCap(); cap > 0 {
-		if today, _ := w.store.CountJobsSubmittedSince(ctx, startOfDayUTC()); int(today) >= cap {
-			w.submitBackoffUntil = startOfDayUTC().Add(24 * time.Hour) // resume tomorrow
-			return nil
-		}
 	}
 	jobs, err := w.store.JobsByState(ctx, job.StatePending)
 	if err != nil {

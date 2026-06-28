@@ -100,6 +100,29 @@ func (w *Workers) supersedeOldDownload(ctx context.Context, newJobID, oldJobID i
 	w.DeleteDownloads(ctx, []int64{oldJobID}, func(int, int, string) {})
 }
 
+// ScanPlexLibraries triggers a full Plex scan of every configured library section
+// (movies, tv, anime), deduped. The per-import partial scan only fires when an
+// import happens; this lets a manual "Refresh from TorBox + Plex" make Plex pick up
+// library changes on demand. Best-effort: per-section failures are logged, not fatal.
+func (w *Workers) ScanPlexLibraries(ctx context.Context) error {
+	if w.plex == nil || !w.set.PlexEnabled() {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, section := range []string{w.set.PlexMovieSection(), w.set.PlexTVSection(), w.set.PlexAnimeSection()} {
+		if section == "" || seen[section] {
+			continue
+		}
+		seen[section] = true
+		if err := w.plex.ScanSection(ctx, section); err != nil {
+			w.logger.Warn("plex library scan failed", "section", section, "error", err)
+			continue
+		}
+		w.logger.Info("plex library scan triggered", "section", section)
+	}
+	return nil
+}
+
 // maybePlexScan triggers a best-effort Plex scan of the just-imported dir if Plex
 // is wired and the section id is configured. Boxarr and Plex often mount the same
 // storage at different paths (e.g. Boxarr "/mnt/library/tv", Plex "/mnt/smedia/tv"),
