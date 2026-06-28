@@ -135,6 +135,50 @@ func (s *Store) ListReleaseLangs(ctx context.Context, limit int) ([]ReleaseLang,
 	return out, rows.Err()
 }
 
+// BackfillReleaseGroups re-derives every row's release_group from its
+// release_name via regroup, rewriting rows whose stored group differs. It exists
+// to repair historical rows recorded before a parser fix (e.g. anime [Group]
+// fansub names that were stored with the SxxEyy token as the group). regroup is
+// injected so this package stays independent of the release parser. A regroup
+// result is normalized to the canonical lower-case form; an empty result leaves
+// the row untouched (a parse failure must not wipe a known group). Returns the
+// number of rows updated.
+func (s *Store) BackfillReleaseGroups(ctx context.Context, regroup func(releaseName string) string) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT release_name, release_group FROM release_lang`)
+	if err != nil {
+		return 0, fmt.Errorf("listing release groups for backfill: %w", err)
+	}
+	type row struct{ name, group string }
+	var all []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.name, &r.group); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	_ = rows.Close()
+
+	n := 0
+	for _, r := range all {
+		want := strings.ToLower(strings.TrimSpace(regroup(r.name)))
+		if want == "" || want == r.group {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE release_lang SET release_group=? WHERE release_name=?`, want, r.name); err != nil {
+			return n, fmt.Errorf("backfilling release group for %q: %w", r.name, err)
+		}
+		n++
+	}
+	return n, nil
+}
+
 // GetReleaseLang returns the verified languages for a release name, or nil.
 func (s *Store) GetReleaseLang(ctx context.Context, releaseName string) (*ReleaseLang, error) {
 	var rl ReleaseLang

@@ -86,3 +86,35 @@ func TestLangMissingCounts(t *testing.T) {
 		t.Errorf("got %d movies / %d episodes, want 1/1", mv, ep)
 	}
 }
+
+func TestBackfillReleaseGroups(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	// One row with a wrong (episode-token) group, one already-correct scene row.
+	_ = st.UpsertReleaseLang(ctx, "[Yameii] Solo Leveling - S02E11 [English Dub] [CR WEB-DL 1080p] [1CD7B335]",
+		"s02e11", []string{"en"}, []string{"en"}, "plex")
+	_ = st.UpsertReleaseLang(ctx, "Bleach.S02E06.1080p.DSNP.WEB-DL.MULTi.AAC2.0.H.264-DUSKLiGHT",
+		"dusklight", []string{"de", "en"}, nil, "plex")
+
+	regroup := func(name string) string {
+		if name == "[Yameii] Solo Leveling - S02E11 [English Dub] [CR WEB-DL 1080p] [1CD7B335]" {
+			return "Yameii"
+		}
+		return "DUSKLiGHT"
+	}
+	n, err := st.BackfillReleaseGroups(ctx, regroup)
+	if err != nil {
+		t.Fatalf("BackfillReleaseGroups: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 row updated, got %d", n)
+	}
+	// The Yameii row's group is corrected (stored lowercased).
+	groups, _ := st.GroupsProvidingLanguage(ctx, "en")
+	if !groups["yameii"] {
+		t.Errorf("yameii group should exist after backfill; got %v", groups)
+	}
+	if groups["s02e11"] {
+		t.Error("the wrong s02e11 group should be gone after backfill")
+	}
+}

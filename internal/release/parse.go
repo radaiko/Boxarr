@@ -116,6 +116,13 @@ func ParseRelease(filename string) (*ParsedRelease, error) {
 			if out.Title == "" && el.AnimeTitle != "" {
 				out.Title = el.AnimeTitle
 			}
+			// torrentname mis-parses the [Group] fansub layout (it grabs the SxxEyy
+			// token as the group); anitogo recovers the real release group. Only
+			// override when anitogo found one, so scene-style trailing groups
+			// (which anitogo leaves empty) keep torrentname's correct value.
+			if el.ReleaseGroup != "" {
+				out.Group = el.ReleaseGroup
+			}
 			for _, s := range el.EpisodeNumber {
 				if n, convErr := strconv.Atoi(s); convErr == nil {
 					out.AbsoluteEpisodes = append(out.AbsoluteEpisodes, n)

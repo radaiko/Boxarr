@@ -21,6 +21,7 @@ import (
 	"github.com/radaiko/boxarr/internal/catalog"
 	"github.com/radaiko/boxarr/internal/config"
 	"github.com/radaiko/boxarr/internal/logbuf"
+	"github.com/radaiko/boxarr/internal/release"
 	"github.com/radaiko/boxarr/internal/settings"
 	"github.com/radaiko/boxarr/internal/store"
 	"github.com/radaiko/boxarr/internal/task"
@@ -76,6 +77,21 @@ func run() error {
 		if err := worker.EnsureCategoryDirs(root, set.Categories()); err != nil {
 			logger.Warn("preparing symlink category directories", "error", err)
 		}
+	}
+
+	// One-time repair: older builds recorded anime [Group] fansub releases with the
+	// SxxEyy token as the release group (torrentname mis-parse). Re-derive groups
+	// from the stored release names so group-language stats + blocklisting key on
+	// the real group. Best-effort and idempotent (rows already correct are skipped).
+	if n, err := st.BackfillReleaseGroups(ctx, func(name string) string {
+		if p, perr := release.ParseRelease(name); perr == nil && p != nil {
+			return p.Group
+		}
+		return ""
+	}); err != nil {
+		logger.Warn("backfilling release groups", "error", err)
+	} else if n > 0 {
+		logger.Info("repaired release groups", "rows", n)
 	}
 
 	tbAPI := worker.LiveTorBox(set)

@@ -56,3 +56,35 @@ func TestParseReleaseAnime(t *testing.T) {
 		t.Errorf("AbsoluteEpisodes = %v, want [862]", r.AbsoluteEpisodes)
 	}
 }
+
+func TestParseReleaseAnimeGroupFromFansubPrefix(t *testing.T) {
+	// torrentname mis-parses the [Group] fansub layout and grabs the SxxEyy token
+	// as the group; anitogo recovers the real release group.
+	cases := []struct{ in, group string }{
+		{"[Yameii] Witch Hat Atelier - S01E07 [English Dub] [CR WEB-DL 1080p H264 AAC] [4649D9F7]", "Yameii"},
+		{"[Yameii] Solo Leveling - S02E11 [English Dub] [CR WEB-DL 1080p] [1CD7B335]", "Yameii"},
+		{"[Yameii] Let This Grieving Soul Retire-S01E21 [English Dub] [CR WEB-DL 1080p H264 AAC] [B44D3D84]", "Yameii"},
+		{"[SubsPlease] Frieren - 01 (1080p) [9C2D4F8A].mkv", "SubsPlease"},
+	}
+	for _, c := range cases {
+		r, err := ParseRelease(c.in)
+		if err != nil {
+			t.Fatalf("ParseRelease(%q): %v", c.in, err)
+		}
+		if r.Group != c.group {
+			t.Errorf("Group = %q, want %q for %q", r.Group, c.group, c.in)
+		}
+	}
+}
+
+func TestParseReleaseSceneGroupUnchanged(t *testing.T) {
+	// Scene-style release: anitogo returns no group, so torrentname's correct
+	// trailing group must be kept.
+	r, err := ParseRelease("Bleach.S02E06.1080p.DSNP.WEB-DL.MULTi.AAC2.0.H.264-DUSKLiGHT")
+	if err != nil {
+		t.Fatalf("ParseRelease: %v", err)
+	}
+	if r.Group != "DUSKLiGHT" {
+		t.Errorf("Group = %q, want %q", r.Group, "DUSKLiGHT")
+	}
+}
