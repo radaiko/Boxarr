@@ -33,6 +33,9 @@ func (l liveTorBox) ListTorrents(ctx context.Context) ([]torbox.TorrentDownload,
 func (l liveTorBox) ControlTorrent(ctx context.Context, id int64, op string) error {
 	return l.set.TorBox().ControlTorrent(ctx, id, op)
 }
+func (l liveTorBox) UserMe(ctx context.Context) (*torbox.User, error) {
+	return l.set.TorBox().UserMe(ctx)
+}
 func (l liveTorBox) Ping(ctx context.Context) error { return l.set.TorBox().Ping(ctx) }
 
 // LivePlex returns a PlexScanner that resolves the current Plex client live.

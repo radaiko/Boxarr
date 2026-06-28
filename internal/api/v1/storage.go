@@ -41,6 +41,7 @@ func (h *Handler) storage(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	startToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	usedToday, _ := h.deps.Store.CountJobsSubmittedSince(ctx, startToday)
+	usedLastHour, _ := h.deps.Store.CountJobsSubmittedSince(ctx, now.Add(-time.Hour))
 	events, _ := h.deps.Store.ListLimitEvents(ctx, 50)
 	if events == nil {
 		events = []store.LimitEvent{}
@@ -56,6 +57,8 @@ func (h *Handler) storage(w http.ResponseWriter, r *http.Request) {
 		"limits": map[string]any{
 			"dailyCap":      h.deps.Settings.TorBoxDailyCap(),
 			"usedToday":     usedToday,
+			"usedLastHour":  usedLastHour,
+			"hourlyCap":     h.deps.Settings.MaxCreatePerHour(),
 			"cooldownUntil": cooldown,
 			"events":        events,
 		},

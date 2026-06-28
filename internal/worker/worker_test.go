@@ -36,6 +36,11 @@ type fakeTorBox struct {
 	createdTorrents []torbox.TorrentCreateRequest
 	torrentList     []torbox.TorrentDownload
 	torrentControls []string
+
+	// account info (UserMe)
+	cooldownUntil string
+	userMeErr     error
+	userMeCalls   int
 }
 
 func (f *fakeTorBox) CreateUsenetDownload(_ context.Context, r torbox.CreateRequest) (*torbox.CreateResult, error) {
@@ -86,6 +91,13 @@ func (f *fakeTorBox) ControlTorrent(_ context.Context, _ int64, op string) error
 	defer f.mu.Unlock()
 	f.torrentControls = append(f.torrentControls, op)
 	return f.controlErr
+}
+
+func (f *fakeTorBox) UserMe(context.Context) (*torbox.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.userMeCalls++
+	return &torbox.User{CooldownUntil: f.cooldownUntil}, f.userMeErr
 }
 
 func (f *fakeTorBox) Ping(context.Context) error { return nil }
@@ -1234,5 +1246,63 @@ func TestRateLimitDoesNotPersistDailyCap(t *testing.T) {
 	_ = w.submitOnce(ctx)
 	if cap := w.set.TorBoxDailyCap(); cap != 0 {
 		t.Errorf("a short-window 429 must not persist a daily cap; got %d", cap)
+	}
+}
+
+func TestSubmitterRespectsAccountCooldown(t *testing.T) {
+	fake := &fakeTorBox{cooldownUntil: time.Now().Add(6 * time.Hour).UTC().Format(time.RFC3339)}
+	w, st, _ := testWorkers(t, fake)
+	ctx := context.Background()
+	id, _ := st.CreateJob(ctx, &job.Job{
+		State: job.StatePending, Category: "sonarr", NZBName: "Rel", NZBContent: []byte("<nzb/>"),
+	})
+	if err := w.submitOnce(ctx); err != nil {
+		t.Fatalf("submitOnce: %v", err)
+	}
+	got, _ := st.GetJob(ctx, id)
+	if got.State != job.StatePending {
+		t.Errorf("must not submit while the TorBox account is in cooldown; got %s", got.State)
+	}
+	if len(fake.created) != 0 {
+		t.Errorf("no NZB should be created during account cooldown; got %d", len(fake.created))
+	}
+}
+
+func TestSubmitterHourlyCapLimitsPerTick(t *testing.T) {
+	fake := &fakeTorBox{}
+	w, st, _ := testWorkers(t, fake)
+	ctx := context.Background()
+	// 1-minute poll, cap 60/hr → at most 1 submission per tick (smooth pacing).
+	_ = w.set.Set(ctx, settings.KeyMaxCreatePerHour, "60")
+	for i := 0; i < 5; i++ {
+		st.CreateJob(ctx, &job.Job{State: job.StatePending, Category: "sonarr", NZBName: "Rel", NZBContent: []byte("<nzb/>")})
+	}
+	if err := w.submitOnce(ctx); err != nil {
+		t.Fatalf("submitOnce: %v", err)
+	}
+	if len(fake.created) != 1 {
+		t.Errorf("expected 1 submission this tick (60/hr over 1m ticks), got %d", len(fake.created))
+	}
+}
+
+func TestSubmitterHourlyCapCeilingStopsTick(t *testing.T) {
+	fake := &fakeTorBox{}
+	w, st, _ := testWorkers(t, fake)
+	ctx := context.Background()
+	_ = w.set.Set(ctx, settings.KeyMaxCreatePerHour, "2")
+	// Two jobs already submitted within the last hour → ceiling reached, none more.
+	now := time.Now()
+	for i := 0; i < 2; i++ {
+		did, _ := st.CreateJob(ctx, &job.Job{State: job.StateImported, Category: "sonarr", NZBName: "Done"})
+		dj, _ := st.GetJob(ctx, did)
+		dj.SubmittedAt = &now
+		_ = st.UpdateJob(ctx, dj)
+	}
+	st.CreateJob(ctx, &job.Job{State: job.StatePending, Category: "sonarr", NZBName: "Rel", NZBContent: []byte("<nzb/>")})
+	if err := w.submitOnce(ctx); err != nil {
+		t.Fatalf("submitOnce: %v", err)
+	}
+	if len(fake.created) != 0 {
+		t.Errorf("hourly ceiling (2/2) reached → no submissions; got %d", len(fake.created))
 	}
 }

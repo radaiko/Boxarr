@@ -71,6 +71,36 @@ func (w *Workers) submitOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if len(jobs) == 0 {
+		return nil // nothing to submit — skip the rate/cooldown TorBox calls
+	}
+
+	// Proactively pace submissions under TorBox's create limit (default 60/hour)
+	// so we never trip its account cooldown. budget < 0 means "no cap configured".
+	budget := -1
+	if cap := w.set.MaxCreatePerHour(); cap > 0 {
+		hour, _ := w.store.CountJobsSubmittedSince(ctx, time.Now().Add(-time.Hour))
+		if int(hour) >= cap {
+			return nil // rolling hourly ceiling reached; a later tick resumes as grabs age out
+		}
+		budget = cap - int(hour)
+		if perTick := perTickBudget(cap, w.set.PollInterval()); perTick < budget {
+			budget = perTick // spread the hourly budget across ticks instead of bursting
+		}
+	}
+
+	// Respect TorBox's account-level cooldown (from /user/me): while it's in
+	// cooldown, queued downloads don't progress and new submissions only renew it.
+	if until := w.torboxAccountCooldown(ctx); !until.IsZero() {
+		w.submitBackoffUntil = until
+		_ = w.set.Set(ctx, settings.KeyTorBoxCooldownUntil, until.UTC().Format(time.RFC3339))
+		w.logger.Warn("torbox account in cooldown; pausing submissions", "until", until)
+		_ = w.store.RecordLimitEvent(ctx, "account_cooldown",
+			"TorBox account in cooldown until "+until.UTC().Format(time.RFC3339))
+		return nil
+	}
+
+	submitted := 0
 	for _, j := range jobs {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -97,8 +127,42 @@ func (w *Workers) submitOnce(ctx context.Context) error {
 			w.submitBackoffUntil = time.Now().Add(cooldown)
 			return nil
 		}
+		submitted++
+		if budget >= 0 && submitted >= budget {
+			return nil // hit this tick's pacing budget; the next tick continues draining
+		}
 	}
 	return nil
+}
+
+// perTickBudget spreads an hourly create cap across submitter ticks so a backlog
+// drains at a steady rate instead of bursting the whole hour's budget at once
+// (which is what trips TorBox's rate limit + account cooldown). At least 1/tick.
+func perTickBudget(capPerHour int, poll time.Duration) int {
+	if poll <= 0 {
+		return capPerHour
+	}
+	n := int(int64(capPerHour) * int64(poll) / int64(time.Hour))
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// torboxAccountCooldown returns the TorBox account's cooldown end time when it is
+// currently in cooldown (per /user/me), or the zero time otherwise. A failed
+// lookup is treated as "not in cooldown" so a transient API error never wedges
+// the submitter.
+func (w *Workers) torboxAccountCooldown(ctx context.Context) time.Time {
+	u, err := w.tb.UserMe(ctx)
+	if err != nil || u == nil || u.CooldownUntil == "" {
+		return time.Time{}
+	}
+	until, perr := time.Parse(time.RFC3339, u.CooldownUntil)
+	if perr != nil || !time.Now().Before(until) {
+		return time.Time{}
+	}
+	return until
 }
 
 // submitJob submits one job, retrying transient TorBox errors with backoff.

@@ -13,7 +13,8 @@ interface StorageResp {
   usedBytes: number
   plan?: { tierName: string; concurrentSlots: number }
   downloads?: { active?: number; queued?: number }
-  limits?: { dailyCap: number; usedToday: number; cooldownUntil: string }
+  usage?: { cooldownUntil?: string; inCooldown?: boolean }
+  limits?: { dailyCap: number; usedToday: number; usedLastHour?: number; hourlyCap?: number; cooldownUntil: string }
   torboxError?: string
 }
 interface Download { id: number; name: string; state: string; mediaType: string; progress: number; protocol: string }
@@ -25,6 +26,17 @@ interface Note { id: number; type: string; read: boolean; createdAt: string; pay
 
 type Nav = (view: string) => void
 type OpenCatalog = (kind: string, id: number) => void
+
+// untilLabel renders how long until a future ISO timestamp (e.g. "2h 5m"); empty
+// when the time is missing or already past.
+function untilLabel(iso: string): string {
+  if (!iso) return ''
+  const s = Math.floor((new Date(iso).getTime() - Date.now()) / 1000)
+  if (Number.isNaN(s) || s <= 0) return ''
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
 
 // Dashboard is the at-a-glance landing view: library + TorBox stats, what needs
 // attention, what's downloading now, and what was recently added.
@@ -55,6 +67,14 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
   const wrongLang = (c.wrongLangMovies ?? 0) + (c.wrongLangEpisodes ?? 0)
   const runningTasks = (activity?.tasks ?? []).filter((t) => t.state === 'running')
   const schedule = activity?.schedule ?? []
+
+  // TorBox throttling: the account cooldown (downloads paused) takes priority over
+  // the lighter submission cooldown (grabs paused) for the at-a-glance card.
+  const lim = storage?.limits
+  const acctCooldown = storage?.usage?.inCooldown ? (storage?.usage?.cooldownUntil ?? '') : ''
+  const cooldownUntil = acctCooldown || lim?.cooldownUntil || ''
+  const cooldownKind = acctCooldown ? 'downloads paused' : (lim?.cooldownUntil ? 'grabs paused' : '')
+  const hourly = lim?.hourlyCap && lim.hourlyCap > 0 ? `${lim.usedLastHour ?? 0}/${lim.hourlyCap}/hr` : ''
 
   async function run(path: string, what: string) {
     try { await postJSON(path, {}); toast(`${what} started — see Activity.`, 'ok') }
@@ -92,7 +112,10 @@ export function Dashboard({ onNavigate, onOpenCatalog }: { onNavigate: Nav; onOp
           sub={`${queue.length - downloading.length} queued${storage?.plan ? ` · ${storage.plan.concurrentSlots} slots` : ''}`}
           onClick={() => onNavigate('Activity')} />
         <StatCard label="Grabs today" value={`${storage?.limits?.usedToday ?? 0}`}
-          sub={storage?.limits && storage.limits.dailyCap > 0 ? `cap ${storage.limits.dailyCap}` : 'no cap'}
+          sub={hourly || (storage?.limits && storage.limits.dailyCap > 0 ? `cap ${storage.limits.dailyCap}` : 'no cap')}
+          onClick={() => onNavigate('TorBox')} />
+        <StatCard label="TorBox cooldown" value={untilLabel(cooldownUntil) || 'Clear'}
+          sub={cooldownUntil ? `${cooldownKind} · until ${new Date(cooldownUntil).toLocaleString()}` : 'no throttle active'}
           onClick={() => onNavigate('TorBox')} />
         <StatCard label="Missing" value={`${missing}`}
           sub={`${c.missingMovies ?? 0} movies · ${c.missingEpisodes ?? 0} episodes`}

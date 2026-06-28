@@ -24,6 +24,7 @@ type TorBoxAPI interface {
 	CreateTorrent(ctx context.Context, req torbox.TorrentCreateRequest) (*torbox.TorrentCreateResult, error)
 	ListTorrents(ctx context.Context) ([]torbox.TorrentDownload, error)
 	ControlTorrent(ctx context.Context, id int64, op string) error
+	UserMe(ctx context.Context) (*torbox.User, error)
 	Ping(ctx context.Context) error
 }
 
